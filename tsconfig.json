@@ -3,12 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ]
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"],
+      "@birklik/core": ["./core/src/index.ts"],
+      "@birklik/core/*": ["./core/src/*"]
     }
   },
   "include": [
@@ -16,5 +14,10 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "core/node_modules",
+    "core/**/*.test.ts"
   ]
 }

@@ -9,8 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "az.birklik.app",
-      "supportsTablet": false,
-      "icon": "./assets/expo.icon"
+      "supportsTablet": false
     },
     "android": {
       "package": "az.birklik.app",
