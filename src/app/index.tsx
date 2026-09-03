@@ -1,33 +1,103 @@
-import {FlatList, StyleSheet, Text, View} from 'react-native'
+import {useCallback, useEffect, useState} from 'react'
+import {ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View} from 'react-native'
 import {SafeAreaView} from 'react-native-safe-area-context'
 
-import {cities, propertyTypes} from '@birklik/core/data'
-import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
+import type {Property} from '@birklik/core/types'
 
-// Временный экран. Он существует ради одной проверки: что общий пакет
-// действительно доезжает до приложения — и до компилятора, и до сборщика.
-// Справочник регионов здесь тот же самый, что на сайте, физически один файл.
-// Заменяется списком объявлений, как только появится доступ к Firestore.
+import {PropertyCard} from '@/components/property-card'
+import {
+  getPromotedProperties,
+  getPropertiesPage,
+  type PropertyCursor
+} from '@/services/property-service'
+import {colors, fontSize, spacing} from '@/theme/theme'
+
+// Витрина. Порядок тот же, что на сайте: сначала платные объявления, следом
+// обычные страницами по двадцать.
 export default function HomeScreen() {
+  const [items, setItems] = useState<Property[]>([])
+  const [cursor, setCursor] = useState<PropertyCursor | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setError(null)
+    try {
+      const [promoted, page] = await Promise.all([
+        getPromotedProperties(),
+        getPropertiesPage(null)
+      ])
+      // Платное объявление приходит обоими запросами — оставляем верхнее.
+      const promotedIds = new Set(promoted.map(p => p.id))
+      setItems([...promoted, ...page.properties.filter(p => !promotedIds.has(p.id))])
+      setCursor(page.cursor)
+    } catch {
+      setError('Elanları yükləmək alınmadı')
+    }
+  }, [])
+
+  useEffect(() => {
+    load().finally(() => setLoading(false))
+  }, [load])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }, [load])
+
+  const loadMore = useCallback(async () => {
+    // Курсора нет — выдача кончилась. Второе условие спасает от повторного
+    // запроса, пока предыдущий ещё идёт: FlatList зовёт onEndReached щедро.
+    if (!cursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await getPropertiesPage(cursor)
+      setItems(prev => {
+        const seen = new Set(prev.map(p => p.id))
+        return [...prev, ...page.properties.filter(p => !seen.has(p.id))]
+      })
+      setCursor(page.cursor)
+    } catch {
+      // Молча: список уже показан, обрывать его сообщением об ошибке хуже,
+      // чем просто не дозагрузить. Потянет вниз ещё раз — попробуем снова.
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [cursor, loadingMore])
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    )
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Birklik.az</Text>
-        <Text style={styles.subtitle}>
-          {cities.length} regionu · {propertyTypes.length} növ
-        </Text>
-      </View>
-
       <FlatList
-        data={cities.slice(0, 20)}
-        keyExtractor={city => city.value}
+        data={items}
+        keyExtractor={property => property.id}
+        renderItem={({item}) => <PropertyCard property={item} language="az" />}
         contentContainerStyle={styles.list}
-        renderItem={({item}) => (
-          <View style={styles.row}>
-            <Text style={styles.rowTitle}>{item.az}</Text>
-            <Text style={styles.rowMeta}>{item.ru}</Text>
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListEmptyComponent={
+          <View style={styles.center}>
+            <Text style={styles.empty}>{error ?? 'Hələ elan yoxdur'}</Text>
           </View>
-        )}
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator style={styles.footer} color={colors.primary} />
+          ) : null
+        }
       />
     </SafeAreaView>
   )
@@ -38,36 +108,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.gray50
   },
-  header: {
-    padding: spacing.md,
-    gap: spacing.xs
-  },
-  title: {
-    fontSize: fontSize.title,
-    fontWeight: '700',
-    color: colors.primary
-  },
-  subtitle: {
-    fontSize: fontSize.sm,
-    color: colors.neutral
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.gray50
   },
   list: {
     padding: spacing.md,
-    gap: spacing.sm
+    gap: spacing.md
   },
-  row: {
-    backgroundColor: colors.white,
-    borderRadius: radius.base,
-    padding: spacing.base,
-    ...shadow.sm
-  },
-  rowTitle: {
+  empty: {
     fontSize: fontSize.base,
-    fontWeight: '600',
-    color: colors.text
+    color: colors.neutral,
+    textAlign: 'center'
   },
-  rowMeta: {
-    fontSize: fontSize.sm,
-    color: colors.neutral
+  footer: {
+    marginVertical: spacing.md
   }
 })
