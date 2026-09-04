@@ -41,16 +41,26 @@ export async function initAppCheck(): Promise<void> {
   if (appCheckReady) return
 
   const provider = new ReactNativeFirebaseAppCheckProvider()
-  provider.configure({
-    android: {
-      provider: __DEV__ ? 'debug' : 'playIntegrity',
-      debugToken: process.env.EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN
-    },
-    apple: {
-      provider: __DEV__ ? 'debug' : 'appAttestWithDeviceCheckFallback',
-      debugToken: process.env.EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN
-    }
-  })
+
+  // Ветки разделены целиком, а не одним полем debugToken на обе. Причина не в
+  // красоте: переменные с приставкой EXPO_PUBLIC_ подставляются в бандл строкой
+  // на этапе сборки. Оставь ссылку на токен в общей ветке — и он уедет в
+  // боевую сборку тоже, откуда его достанут из файла приложения. А
+  // зарегистрированный debug-токен позволяет обойти проверку подлинности
+  // вообще. Здесь при __DEV__ === false вся ветка с ним недостижима и
+  // выбрасывается сборщиком.
+  if (__DEV__) {
+    const debugToken = process.env.EXPO_PUBLIC_APPCHECK_DEBUG_TOKEN
+    provider.configure({
+      android: {provider: 'debug', debugToken},
+      apple: {provider: 'debug', debugToken}
+    })
+  } else {
+    provider.configure({
+      android: {provider: 'playIntegrity'},
+      apple: {provider: 'appAttestWithDeviceCheckFallback'}
+    })
+  }
 
   await initializeAppCheck(app, {provider, isTokenAutoRefreshEnabled: true})
   appCheckReady = true

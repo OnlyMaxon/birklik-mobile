@@ -31,8 +31,10 @@ yarn-error.*
 *.pem
 
 # local env files
-.env
-.env*.local
+# Шаблон со звёздочкой намеренно: Expo читает не только .env, но и
+# .env.development с .env.production. Точечный список однажды промахнётся.
+.env*
+!.env.example
 
 # Конфигурация Firebase. Не секрет в строгом смысле — те же значения лежат в
 # собранном приложении, — но и в открытом репозитории ей делать нечего.
@@ -48,3 +50,8 @@ example
 # generated native folders
 /ios
 /android
+
+# Собранные пакеты приложения — их место в EAS, а не в репозитории
+*.apk
+*.aab
+*.ipa
