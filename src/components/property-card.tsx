@@ -1,14 +1,15 @@
 import {Image} from 'expo-image'
-import {StyleSheet, Text, View} from 'react-native'
+import {Pressable, StyleSheet, Text, View} from 'react-native'
+import {Link} from 'expo-router'
 
 import type {Property} from '@birklik/core/types'
 import {isTierActive} from '@birklik/core/utils/premium-helper'
 
+import {useLanguage} from '@/i18n/language-provider'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 type Props = {
   property: Property
-  language: 'az' | 'en' | 'ru'
 }
 
 /**
@@ -18,60 +19,60 @@ type Props = {
  * тарифа, И непросроченной даты. Смотреть на одно `listingTier` нельзя: ровно
  * на этом сайт полгода рисовал «VIP» объявлениям с истёкшим сроком.
  */
-export function PropertyCard({property, language}: Props) {
+export function PropertyCard({property}: Props) {
+  const {language, t} = useLanguage()
   const premium = isTierActive(property, 'premium')
   const vip = !premium && isTierActive(property, 'vip')
   const cover = property.images?.[0]
 
   return (
-    <View style={styles.card}>
-      {cover ? (
-        <Image
-          source={{uri: cover}}
-          style={styles.image}
-          contentFit="cover"
-          transition={150}
-        />
-      ) : (
-        <View style={[styles.image, styles.imageEmpty]}>
-          <Text style={styles.imageEmptyText}>Şəkil yoxdur</Text>
-        </View>
-      )}
-
-      {(premium || vip) && (
-        <View style={[styles.badge, premium ? styles.badgePremium : styles.badgeVip]}>
-          <Text style={styles.badgeText}>{premium ? 'PREMIUM' : 'VIP'}</Text>
-        </View>
-      )}
-
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={2}>
-          {property.title?.[language] || property.title?.az || ''}
-        </Text>
-
-        <Text style={styles.location} numberOfLines={1}>
-          {[property.city, property.district].filter(Boolean).join(' · ')}
-        </Text>
-
-        <View style={styles.metaRow}>
-          <Text style={styles.meta}>{property.rooms} otaq</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.meta}>{property.area} m²</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Text style={styles.meta}>{property.maxGuests} nəfər</Text>
-        </View>
-
-        {typeof property.price?.daily === 'number' && (
-          <Text style={styles.price}>
-            {property.price.daily} ₼ <Text style={styles.priceUnit}>/ gecə</Text>
-          </Text>
+    <Link href={`/property/${property.id}`} asChild>
+      <Pressable style={({pressed}) => [styles.card, pressed && styles.cardPressed]}>
+        {cover ? (
+          <Image source={{uri: cover}} style={styles.image} contentFit="cover" transition={150} />
+        ) : (
+          <View style={[styles.image, styles.imageEmpty]}>
+            <Text style={styles.imageEmptyText}>{t.property.gallery}</Text>
+          </View>
         )}
-      </View>
-    </View>
+
+        {(premium || vip) && (
+          <View style={[styles.badge, premium ? styles.badgePremium : styles.badgeVip]}>
+            <Text style={styles.badgeText}>{premium ? 'PREMIUM' : 'VIP'}</Text>
+          </View>
+        )}
+
+        <View style={styles.body}>
+          <Text style={styles.title} numberOfLines={2}>
+            {property.title?.[language] || property.title?.az || ''}
+          </Text>
+
+          <Text style={styles.location} numberOfLines={1}>
+            {[property.city, property.district].filter(Boolean).join(' · ')}
+          </Text>
+
+          <View style={styles.metaRow}>
+            <Text style={styles.meta}>{property.rooms} {t.property.rooms}</Text>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.meta}>{property.area} {t.property.sqm}</Text>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.meta}>{property.maxGuests} {t.property.guests}</Text>
+          </View>
+
+          {typeof property.price?.daily === 'number' && (
+            <Text style={styles.price}>
+              {property.price.daily} ₼{' '}
+              <Text style={styles.priceUnit}>/ {t.property.perNight}</Text>
+            </Text>
+          )}
+        </View>
+      </Pressable>
+    </Link>
   )
 }
 
 const styles = StyleSheet.create({
+  cardPressed: {opacity: 0.75},
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.lg,

@@ -4,6 +4,8 @@ import {Stack} from 'expo-router'
 import {StatusBar} from 'expo-status-bar'
 import {SafeAreaProvider} from 'react-native-safe-area-context'
 
+import {LanguageSwitch} from '@/components/language-switch'
+import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
 import {colors, fontSize, spacing} from '@/theme/theme'
 
@@ -44,17 +46,24 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerStyle: {backgroundColor: colors.primary},
-          headerTintColor: colors.white,
-          headerTitleStyle: {fontWeight: '600'},
-          contentStyle: {backgroundColor: colors.background}
-        }}
-      >
-        <Stack.Screen name="index" options={{title: 'Birklik.az'}} />
-      </Stack>
+      <LanguageProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerStyle: {backgroundColor: colors.primary},
+            headerTintColor: colors.white,
+            headerTitleStyle: {fontWeight: '600'},
+            contentStyle: {backgroundColor: colors.background},
+            // Переключатель языка в шапке на всех экранах: отдельного
+            // раздела настроек пока нет, а язык менять надо.
+            headerRight: () => <LanguageSwitch />
+          }}
+        >
+          <Stack.Screen name="index" options={{title: 'Birklik.az'}} />
+          {/* Заголовок ставит сама страница — там название объявления. */}
+          <Stack.Screen name="property/[id]" options={{title: ''}} />
+        </Stack>
+      </LanguageProvider>
     </SafeAreaProvider>
   )
 }

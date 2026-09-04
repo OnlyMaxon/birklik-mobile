@@ -48,7 +48,8 @@
           }
         }
       ],
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

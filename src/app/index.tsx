@@ -81,7 +81,7 @@ export default function HomeScreen() {
       <FlatList
         data={items}
         keyExtractor={property => property.id}
-        renderItem={({item}) => <PropertyCard property={item} language="az" />}
+        renderItem={({item}) => <PropertyCard property={item} />}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />

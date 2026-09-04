@@ -1,6 +1,8 @@
 import {
   collection,
+  doc,
   documentId,
+  getDoc,
   getDocs,
   limit as limitTo,
   orderBy,
@@ -66,6 +68,25 @@ export async function getPromotedProperties(city?: string): Promise<Property[]> 
     .map(doc => toProperty(doc.id, doc.data()))
     .filter(isOnDisplay)
     .sort((a, b) => tierRank(b) - tierRank(a))
+}
+
+/**
+ * Одно объявление по идентификатору.
+ *
+ * Скрытое с витрины возвращается как `null`, а не отдаётся по прямой ссылке:
+ * ровно эту дыру закрывал аудит на сайте — там страница открывалась при любом
+ * статусе, включая неоплаченные черновики и не прошедшие модерацию.
+ *
+ * Владелец и модератор на сайте видят своё, но здесь этого пока нет: в
+ * приложении ещё нет входа. Появится — вернуть проверку так же, как в
+ * `src/app/property/[id]/page.tsx`.
+ */
+export async function getProperty(id: string): Promise<Property | null> {
+  const snapshot = await getDoc(doc(db, 'properties', id))
+  if (!snapshot.exists()) return null
+
+  const property = toProperty(snapshot.id, snapshot.data() ?? {})
+  return isOnDisplay(property) ? property : null
 }
 
 /**
