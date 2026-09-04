@@ -6,6 +6,8 @@ import {Stack, useLocalSearchParams} from 'expo-router'
 import type {Property} from '@birklik/core/types'
 import {isTierActive} from '@birklik/core/utils/premium-helper'
 
+import {FavoriteButton} from '@/components/favorite-button'
+import {PropertyMap} from '@/components/property-map'
 import {useLanguage} from '@/i18n/language-provider'
 import {getProperty} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
@@ -80,6 +82,10 @@ export default function PropertyScreen() {
           <View style={[styles.slide, styles.slideEmpty]} />
         )}
 
+        <View style={styles.favorite}>
+          <FavoriteButton propertyId={property.id} favorites={property.favorites} size="large" />
+        </View>
+
         <View style={styles.body}>
           {(premium || vip) && (
             <View style={[styles.badge, premium ? styles.badgePremium : styles.badgeVip]}>
@@ -131,9 +137,22 @@ export default function PropertyScreen() {
             </Section>
           ) : null}
 
-          {/* Бронирование требует входа, которого в приложении ещё нет.
-              Вместо мёртвой кнопки — звонок владельцу: он и на сайте
-              остаётся основным способом договориться. */}
+          {/* Координаты бывают не у всех записей — у старых объявлений их нет,
+              и рисовать карту в точке (0, 0) в Гвинейском заливе нельзя. */}
+          {property.coordinates?.lat && property.coordinates?.lng ? (
+            <Section title={t.property.location}>
+              <PropertyMap
+                latitude={property.coordinates.lat}
+                longitude={property.coordinates.lng}
+                label={title}
+              />
+            </Section>
+          ) : null}
+
+          {/* Бронирования пока нет: календарь занятости и проверка
+              пересечений — отдельная работа. Звонок владельцу и на сайте
+              остаётся основным способом договориться, так что кнопка не
+              заглушка. */}
           {phone ? (
             <Pressable
               style={styles.callButton}
@@ -179,6 +198,7 @@ const styles = StyleSheet.create({
   notFound: {fontSize: fontSize.lg, color: colors.neutral},
   slide: {width, height: 280, backgroundColor: colors.gray100},
   slideEmpty: {backgroundColor: colors.gray200},
+  favorite: {position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 1},
   body: {padding: spacing.md, gap: spacing.sm},
   badge: {
     alignSelf: 'flex-start',

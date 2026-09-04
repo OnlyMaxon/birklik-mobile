@@ -1,42 +1,48 @@
-import {useCallback, useEffect, useState} from 'react'
+import {useCallback, useEffect, useMemo, useState} from 'react'
 import {ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View} from 'react-native'
 import {SafeAreaView} from 'react-native-safe-area-context'
 
+import {filterProperties} from '@birklik/core/data'
 import type {Property} from '@birklik/core/types'
+import {tierRank} from '@birklik/core/utils/premium-helper'
 
+import {FilterSheet} from '@/components/filter-sheet'
 import {PropertyCard} from '@/components/property-card'
-import {
-  getPromotedProperties,
-  getPropertiesPage,
-  type PropertyCursor
-} from '@/services/property-service'
+import {SearchBar} from '@/components/search-bar'
+import {useFilters, type Filters} from '@/filters/use-filters'
+import {useLanguage} from '@/i18n/language-provider'
+import {getAllForFilter} from '@/services/property-service'
 import {colors, fontSize, spacing} from '@/theme/theme'
 
-// Витрина. Порядок тот же, что на сайте: сначала платные объявления, следом
-// обычные страницами по двадцать.
+/**
+ * Витрина.
+ *
+ * Объявления берутся разом и фильтруются на устройстве — функцией
+ * `filterProperties` из общего пакета, той же, что применяет сайт. Так поиск,
+ * тип, цена и вместимость работают по одним правилам в обоих приложениях, а не
+ * по двум похожим.
+ *
+ * Порядок задаёт `tierRank`: платные выше обычных. На сайте это делают два
+ * запроса, здесь достаточно сортировки — выборка и так вся на руках.
+ */
 export default function HomeScreen() {
-  const [items, setItems] = useState<Property[]>([])
-  const [cursor, setCursor] = useState<PropertyCursor | null>(null)
+  const {t} = useLanguage()
+  const {filters, patch, reset, activeCount} = useFilters()
+
+  const [all, setAll] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
     try {
-      const [promoted, page] = await Promise.all([
-        getPromotedProperties(),
-        getPropertiesPage(null)
-      ])
-      // Платное объявление приходит обоими запросами — оставляем верхнее.
-      const promotedIds = new Set(promoted.map(p => p.id))
-      setItems([...promoted, ...page.properties.filter(p => !promotedIds.has(p.id))])
-      setCursor(page.cursor)
+      setAll(await getAllForFilter())
     } catch {
-      setError('Elanları yükləmək alınmadı')
+      setError(t.messages.error)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     load().finally(() => setLoading(false))
@@ -48,25 +54,41 @@ export default function HomeScreen() {
     setRefreshing(false)
   }, [load])
 
-  const loadMore = useCallback(async () => {
-    // Курсора нет — выдача кончилась. Второе условие спасает от повторного
-    // запроса, пока предыдущий ещё идёт: FlatList зовёт onEndReached щедро.
-    if (!cursor || loadingMore) return
-    setLoadingMore(true)
-    try {
-      const page = await getPropertiesPage(cursor)
-      setItems(prev => {
-        const seen = new Set(prev.map(p => p.id))
-        return [...prev, ...page.properties.filter(p => !seen.has(p.id))]
-      })
-      setCursor(page.cursor)
-    } catch {
-      // Молча: список уже показан, обрывать его сообщением об ошибке хуже,
-      // чем просто не дозагрузить. Потянет вниз ещё раз — попробуем снова.
-    } finally {
-      setLoadingMore(false)
+  // Регионы для листа фильтров — только те, где объявления есть. Справочник
+  // городов вчетверо шире реальной географии, и предлагать пустой регион
+  // означает вести человека в никуда.
+  const availableCities = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const property of all) {
+      if (property.city) counts.set(property.city, (counts.get(property.city) ?? 0) + 1)
     }
-  }, [cursor, loadingMore])
+    return [...counts]
+      .map(([value, count]) => ({value, count}))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+  }, [all])
+
+  const visible = useMemo(() => {
+    const found = filterProperties(all, {
+      search: filters.search || undefined,
+      city: filters.city || undefined,
+      type: filters.type || undefined,
+      minPrice: filters.minPrice ?? undefined,
+      maxPrice: filters.maxPrice ?? undefined,
+      minGuests: filters.minGuests ?? undefined,
+      // Кнопки подписаны «4+», то есть «вмещает не меньше четырёх». Общая
+      // функция сравнивает ДИАПАЗОНЫ и при отсутствии верхней границы
+      // подставляет 10 — тогда дом на двадцать человек (диапазон 15–20) в
+      // выдачу бы не попал, потому что 10 меньше 15. Значение '10+'
+      // разворачивается в 999 и делает верхнюю границу поиска бесконечной.
+      maxGuests: filters.minGuests !== null ? '10+' : undefined
+    })
+    return [...found].sort((a, b) => tierRank(b) - tierRank(a))
+  }, [all, filters])
+
+  const apply = (next: Filters) => {
+    patch(next)
+    setSheetOpen(false)
+  }
 
   if (loading) {
     return (
@@ -78,53 +100,67 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['bottom']}>
+      <View style={styles.header}>
+        <SearchBar
+          value={filters.search}
+          onChangeText={search => patch({search})}
+          onOpenFilters={() => setSheetOpen(true)}
+          activeCount={activeCount}
+        />
+        <Text style={styles.count}>
+          {visible.length} / {all.length}
+        </Text>
+      </View>
+
       <FlatList
-        data={items}
+        data={visible}
         keyExtractor={property => property.id}
         renderItem={({item}) => <PropertyCard property={item} />}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
-        onEndReached={loadMore}
-        onEndReachedThreshold={0.5}
+        keyboardDismissMode="on-drag"
         ListEmptyComponent={
-          <View style={styles.center}>
-            <Text style={styles.empty}>{error ?? 'Hələ elan yoxdur'}</Text>
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>{error ?? t.messages.noResults}</Text>
+            {!error && activeCount > 0 ? (
+              <Text style={styles.emptyHint} onPress={reset}>
+                {t.search.clearFilters}
+              </Text>
+            ) : null}
           </View>
         }
-        ListFooterComponent={
-          loadingMore ? (
-            <ActivityIndicator style={styles.footer} color={colors.primary} />
-          ) : null
-        }
+      />
+
+      <FilterSheet
+        visible={sheetOpen}
+        filters={filters}
+        availableCities={availableCities}
+        onApply={apply}
+        onClose={() => setSheetOpen(false)}
       />
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.gray50
-  },
+  screen: {flex: 1, backgroundColor: colors.gray50},
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xl,
     backgroundColor: colors.gray50
   },
-  list: {
-    padding: spacing.md,
-    gap: spacing.md
+  header: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.sm,
+    gap: spacing.xs
   },
-  empty: {
-    fontSize: fontSize.base,
-    color: colors.neutral,
-    textAlign: 'center'
-  },
-  footer: {
-    marginVertical: spacing.md
-  }
+  count: {fontSize: fontSize.xs, color: colors.neutral, paddingLeft: spacing.xs},
+  list: {paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md},
+  empty: {alignItems: 'center', paddingVertical: spacing.xxl, gap: spacing.sm},
+  emptyText: {fontSize: fontSize.base, color: colors.neutral, textAlign: 'center'},
+  emptyHint: {fontSize: fontSize.sm, color: colors.primary, fontWeight: '600'}
 })

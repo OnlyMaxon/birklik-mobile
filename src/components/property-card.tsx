@@ -5,6 +5,7 @@ import {Link} from 'expo-router'
 import type {Property} from '@birklik/core/types'
 import {isTierActive} from '@birklik/core/utils/premium-helper'
 
+import {FavoriteButton} from '@/components/favorite-button'
 import {useLanguage} from '@/i18n/language-provider'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
@@ -35,6 +36,10 @@ export function PropertyCard({property}: Props) {
             <Text style={styles.imageEmptyText}>{t.property.gallery}</Text>
           </View>
         )}
+
+        <View style={styles.favorite}>
+          <FavoriteButton propertyId={property.id} favorites={property.favorites} />
+        </View>
 
         {(premium || vip) && (
           <View style={[styles.badge, premium ? styles.badgePremium : styles.badgeVip]}>
@@ -73,6 +78,7 @@ export function PropertyCard({property}: Props) {
 
 const styles = StyleSheet.create({
   cardPressed: {opacity: 0.75},
+  favorite: {position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1},
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.lg,

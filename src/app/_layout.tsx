@@ -4,6 +4,8 @@ import {Stack} from 'expo-router'
 import {StatusBar} from 'expo-status-bar'
 import {SafeAreaProvider} from 'react-native-safe-area-context'
 
+import {AuthProvider} from '@/auth/auth-provider'
+import {AccountButton} from '@/components/account-button'
 import {LanguageSwitch} from '@/components/language-switch'
 import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
@@ -47,28 +49,52 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <LanguageProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerStyle: {backgroundColor: colors.primary},
-            headerTintColor: colors.white,
-            headerTitleStyle: {fontWeight: '600'},
-            contentStyle: {backgroundColor: colors.background},
-            // Переключатель языка в шапке на всех экранах: отдельного
-            // раздела настроек пока нет, а язык менять надо.
-            headerRight: () => <LanguageSwitch />
-          }}
-        >
-          <Stack.Screen name="index" options={{title: 'Birklik.az'}} />
-          {/* Заголовок ставит сама страница — там название объявления. */}
-          <Stack.Screen name="property/[id]" options={{title: ''}} />
-        </Stack>
+        <AuthProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerStyle: {backgroundColor: colors.primary},
+              headerTintColor: colors.white,
+              headerTitleStyle: {fontWeight: '600'},
+              contentStyle: {backgroundColor: colors.background},
+              // Язык и учётная запись в шапке на всех экранах. Отдельного раздела
+              // настроек нет, а кабинет открывается той же кнопкой.
+              headerRight: () => (
+                <View style={styles.headerActions}>
+                  <LanguageSwitch />
+                  <AccountButton />
+                </View>
+              )
+            }}
+          >
+            <Stack.Screen name="index" options={{title: 'Birklik.az'}} />
+            {/* Заголовок ставит сама страница — там название объявления. */}
+            <Stack.Screen name="property/[id]" options={{title: ''}} />
+            <Stack.Screen name="account" options={{title: ''}} />
+            <Stack.Screen name="notifications" options={{title: ''}} />
+            {/* Вход и регистрация приходят листом поверх содержимого: человек
+                попадает сюда из середины работы и должен вернуться туда же. */}
+            <Stack.Screen name="(auth)/login" options={{presentation: 'modal', title: ''}} />
+            <Stack.Screen name="(auth)/register" options={{presentation: 'modal', title: ''}} />
+            {/* Подтверждение почты жестом не закрыть: пока оно не пройдено,
+                уходить с него некуда. */}
+            <Stack.Screen
+              name="(auth)/verify-email"
+              options={{headerShown: false, gestureEnabled: false}}
+            />
+          </Stack>
+        </AuthProvider>
       </LanguageProvider>
     </SafeAreaProvider>
   )
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
   center: {
     flex: 1,
     alignItems: 'center',

@@ -71,15 +71,66 @@ export async function getPromotedProperties(city?: string): Promise<Property[]> 
 }
 
 /**
+ * Все объявления витрины разом — для поиска и фильтров.
+ *
+ * Фильтрация идёт на устройстве функцией `filterProperties` из общего пакета:
+ * той же самой, что применяет сайт. Дублировать её условия запросом к
+ * Firestore нельзя — там нет ни поиска по тексту, ни пересечения дат, ни
+ * набора удобств, а под каждое сочетание полей пришлось бы заводить свой
+ * составной индекс.
+ *
+ * Отсюда потолок: в базе 72 активных объявления, предел в 300 даёт запас
+ * вчетверо. **Когда объявлений станет больше двухсот, так дальше нельзя** —
+ * фильтры придётся переносить в запрос или в поисковый сервис.
+ */
+export async function getAllForFilter(city?: string): Promise<Property[]> {
+  const constraints: QueryConstraint[] = [
+    where('status', '==', 'active'),
+    ...(city ? [where('city', '==', city)] : []),
+    orderBy('createdAt', 'desc'),
+    orderBy(documentId(), 'desc'),
+    limitTo(300)
+  ]
+
+  const snapshot = await getDocs(query(collection(db, 'properties'), ...constraints))
+  return snapshot.docs.map(doc => toProperty(doc.id, doc.data())).filter(isOnDisplay)
+}
+
+/**
+ * Объявления владельца — все, включая снятые с витрины.
+ *
+ * `isOnDisplay` здесь НЕ применяется намеренно: владельцу нужно видеть и
+ * истёкшее, и ожидающее модерации, и черновик — иначе он не поймёт, куда
+ * делось объявление, и не сможет продлить. Ровно за этим он в кабинет и
+ * приходит.
+ *
+ * Правила разрешают такое чтение всем: коллекция `properties` открыта. Отбор
+ * по `ownerId` — вопрос смысла, а не безопасности.
+ */
+export async function getOwnerProperties(ownerId: string): Promise<Property[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'properties'),
+      where('ownerId', '==', ownerId),
+      orderBy('createdAt', 'desc'),
+      orderBy(documentId(), 'desc'),
+      limitTo(200)
+    )
+  )
+  return snapshot.docs.map(doc => toProperty(doc.id, doc.data()))
+}
+
+/**
  * Одно объявление по идентификатору.
  *
  * Скрытое с витрины возвращается как `null`, а не отдаётся по прямой ссылке:
  * ровно эту дыру закрывал аудит на сайте — там страница открывалась при любом
  * статусе, включая неоплаченные черновики и не прошедшие модерацию.
  *
- * Владелец и модератор на сайте видят своё, но здесь этого пока нет: в
- * приложении ещё нет входа. Появится — вернуть проверку так же, как в
- * `src/app/property/[id]/page.tsx`.
+ * Владелец и модератор на сайте видят СВОЁ объявление в любом статусе — им
+ * нужно его проверить и продлить. Здесь такого исключения пока нет, хотя вход
+ * уже появился: не хватает заявки модератора из токена и экрана кабинета.
+ * Делать по образцу `src/app/property/[id]/page.tsx` в веб-репозитории.
  */
 export async function getProperty(id: string): Promise<Property | null> {
   const snapshot = await getDoc(doc(db, 'properties', id))
