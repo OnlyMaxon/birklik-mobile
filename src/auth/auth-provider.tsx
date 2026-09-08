@@ -1,4 +1,13 @@
-import {createContext, useContext, useEffect, useMemo, useState, type ReactNode} from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from 'react'
+import {AppState} from 'react-native'
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -40,6 +49,14 @@ interface AuthValue {
   /** null пока неизвестно — первая проверка входа асинхронна. */
   loading: boolean
   emailVerified: boolean
+  /**
+   * Перечитывает учётку у Firebase и возвращает свежий признак подтверждения.
+   *
+   * Нужна потому, что `emailVerified` не приходит сам: человек подтверждает
+   * почту в браузере, а приложение об этом никак не узнаёт — ни события, ни
+   * обновления токена не происходит.
+   */
+  refreshUser: () => Promise<boolean>
   /** Право модератора живёт в заявке токена, а не в документе профиля. */
   isModerator: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -62,10 +79,44 @@ export function AuthProvider({children}: {children: ReactNode}) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [isModerator, setIsModerator] = useState(false)
+  // ⚠️ Подтверждение почты держим ОТДЕЛЬНЫМ состоянием, а не читаем из
+  // `user.emailVerified`.
+  //
+  // `reload()` обновляет объект учётки НА МЕСТЕ: поле внутри меняется, а ссылка
+  // остаётся прежней. React такого не замечает, перерисовки нет — и приложение
+  // считало человека неподтверждённым даже после успешной проверки. Ровно на
+  // это и наткнулись: почту подтвердили, а приложение не подхватило.
+  const [emailVerified, setEmailVerified] = useState(false)
+
+  const refreshUser = useCallback(async () => {
+    const current = auth.currentUser
+    if (!current) return false
+    try {
+      await current.reload()
+      setEmailVerified(current.emailVerified)
+      return current.emailVerified
+    } catch {
+      // Нет сети — оставляем как есть, врать в обе стороны нельзя.
+      return emailVerified
+    }
+  }, [emailVerified])
+
+  // Проверяем при каждом возврате в приложение. Это и есть боевой случай:
+  // человек уходит в почту, жмёт ссылку и возвращается — событий от Firebase
+  // при этом не приходит, узнать можно только спросив.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active' && auth.currentUser && !auth.currentUser.emailVerified) {
+        void refreshUser()
+      }
+    })
+    return () => subscription.remove()
+  }, [refreshUser])
 
   useEffect(() => {
     return onAuthStateChanged(auth, async current => {
       setUser(current)
+      setEmailVerified(current?.emailVerified ?? false)
 
       if (!current) {
         setProfile(null)
@@ -117,7 +168,8 @@ export function AuthProvider({children}: {children: ReactNode}) {
       user,
       profile,
       loading,
-      emailVerified: user?.emailVerified ?? false,
+      emailVerified,
+      refreshUser,
       isModerator,
 
       signIn: async (email, password) => {
@@ -158,7 +210,7 @@ export function AuthProvider({children}: {children: ReactNode}) {
         if (auth.currentUser) await sendEmailVerification(auth.currentUser)
       }
     }),
-    [user, profile, loading, isModerator]
+    [user, profile, loading, emailVerified, refreshUser, isModerator]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

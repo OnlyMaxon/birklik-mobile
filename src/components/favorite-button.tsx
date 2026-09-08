@@ -1,11 +1,12 @@
 import {useState} from 'react'
-import {Pressable, StyleSheet, Text} from 'react-native'
+import {Pressable, StyleSheet} from 'react-native'
 import {router} from 'expo-router'
+import {Ionicons} from '@expo/vector-icons'
 
 import {useAuth} from '@/auth/auth-provider'
 import {useLanguage} from '@/i18n/language-provider'
 import {toggleFavorite} from '@/services/favorites-service'
-import {colors, fontSize, radius, shadow} from '@/theme/theme'
+import {colors, radius, shadow} from '@/theme/theme'
 
 type Props = {
   propertyId: string
@@ -13,12 +14,25 @@ type Props = {
   size?: 'small' | 'large'
 }
 
+// Красный сохранённого состояния взят из `.property-favorite-btn.bookmarked`
+// на сайте. Там он градиентом, здесь сплошной: градиент в React Native требует
+// отдельной библиотеки с нативной частью, а разница на кружке в 36 точек
+// неразличима.
+const SAVED = '#e74c3c'
+
 /**
- * Сердечко.
+ * Кнопка «Сохранить».
+ *
+ * Значок — закладка, а не сердце. На сайте это `bookmark`, и подпись у кнопки
+ * тоже про закладку (`t.buttons.bookmark`); сердце здесь было расхождением с
+ * вебом, а не заменой значка.
+ *
+ * Оформление оттуда же: зелёный кружок с белым значком, при сохранении кружок
+ * краснеет.
  *
  * Состояние держится здесь и меняется сразу, не дожидаясь Firestore: ждать
- * ответа сети на нажатие сердечка — заметная задержка на ровном месте. Если
- * запись не прошла, отметка возвращается обратно.
+ * ответа сети на нажатие — заметная задержка на ровном месте. Если запись не
+ * прошла, отметка возвращается обратно.
  *
  * Гостя отправляем на вход. Записать за него нельзя: правила требуют, чтобы
  * добавляемый идентификатор совпадал с вошедшим.
@@ -50,16 +64,21 @@ export function FavoriteButton({propertyId, favorites, size = 'small'}: Props) {
     }
   }
 
+  const large = size === 'large'
+
   return (
     <Pressable
       onPress={press}
-      style={[styles.button, size === 'large' && styles.buttonLarge]}
+      style={[styles.button, large && styles.buttonLarge, active && styles.buttonActive]}
       hitSlop={8}
+      accessibilityRole="button"
       accessibilityLabel={t.buttons.bookmark}
     >
-      <Text style={[styles.icon, size === 'large' && styles.iconLarge, active && styles.iconActive]}>
-        {active ? '♥' : '♡'}
-      </Text>
+      <Ionicons
+        name={active ? 'bookmark' : 'bookmark-outline'}
+        size={large ? 22 : 18}
+        color={colors.white}
+      />
     </Pressable>
   )
 }
@@ -71,15 +90,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.primary,
     ...shadow.sm
   },
   buttonLarge: {width: 44, height: 44},
-  icon: {
-    fontSize: fontSize.lg,
-    lineHeight: fontSize.lg + 4,
-    color: colors.gray500
-  },
-  iconLarge: {fontSize: fontSize.xxl, lineHeight: fontSize.xxl + 4},
-  iconActive: {color: colors.error}
+  buttonActive: {backgroundColor: SAVED}
 })

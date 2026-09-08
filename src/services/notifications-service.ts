@@ -39,6 +39,25 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
 }
 
 /**
+ * Сколько уведомлений не прочитано — для значка в шапке.
+ *
+ * Отдельный запрос, а не подсчёт по загруженному списку: список ограничен
+ * полусотней и отсортирован по дате, поэтому непрочитанное постарше в него
+ * может не попасть — значок врал бы в меньшую сторону.
+ *
+ * Отказ гасится нулём: счётчик на значке не то, ради чего стоит показывать
+ * человеку ошибку.
+ */
+export async function getUnreadCount(userId: string): Promise<number> {
+  try {
+    const snapshot = await getDocs(query(path(userId), where('read', '==', false)))
+    return snapshot.size
+  } catch {
+    return 0
+  }
+}
+
+/**
  * Помечает прочитанным — именно помечает, а не удаляет.
  *
  * На сайте эта кнопка полгода удаляла уведомление: `markNotificationAsRead` не

@@ -1,15 +1,29 @@
 import {useEffect, useState} from 'react'
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native'
 import {Stack} from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
 import {StatusBar} from 'expo-status-bar'
 import {SafeAreaProvider} from 'react-native-safe-area-context'
 
 import {AuthProvider} from '@/auth/auth-provider'
 import {AccountButton} from '@/components/account-button'
+import {HeaderLogo} from '@/components/header-logo'
 import {LanguageSwitch} from '@/components/language-switch'
+import {NotificationsButton} from '@/components/notifications-button'
 import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
 import {colors, fontSize, spacing} from '@/theme/theme'
+
+// Заставкой распоряжаемся сами, а не полагаемся на автоскрытие.
+//
+// Ниже мы намеренно держим первый экран до готовности App Check. При
+// автоскрытии заставка уходит по первой отрисовке, то есть человек успевал бы
+// увидеть голый крутящийся кружок между логотипом и содержимым. Теперь логотип
+// висит ровно до момента, когда есть что показать.
+//
+// Вызов на уровне модуля, до первой отрисовки: позже уже поздно. Отказ гасится
+// намеренно — на этом месте исключение оставило бы приложение без интерфейса.
+SplashScreen.preventAutoHideAsync().catch(() => undefined)
 
 // Тёмная тема пока не делается: на вебе её нет, а разъезжаться в оформлении
 // двум приложениям одного продукта нельзя. В app.json стоит
@@ -25,6 +39,12 @@ export default function RootLayout() {
     initAppCheck()
       .then(() => setReady(true))
       .catch(() => setFailed(true))
+      // Заставка уходит в обоих случаях: и когда всё хорошо, и когда App Check
+      // не поднялся. Иначе сообщение об ошибке осталось бы под ней, и вместо
+      // объяснения человек смотрел бы на застывший логотип.
+      .finally(() => {
+        void SplashScreen.hideAsync().catch(() => undefined)
+      })
   }, [])
 
   if (failed) {
@@ -50,32 +70,65 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <LanguageProvider>
         <AuthProvider>
-          <StatusBar style="light" />
+          {/* Шапка светлая, поэтому и значки строки состояния тёмные. */}
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
-              headerStyle: {backgroundColor: colors.primary},
-              headerTintColor: colors.white,
-              headerTitleStyle: {fontWeight: '600'},
+              // Шапка белая с серой чертой снизу — как `.header` на сайте.
+              // Раньше она была зелёной: приложение и сайт выглядели разными
+              // продуктами, а на зелёном фоне не имели смысла ни серая обводка
+              // кнопки языка, ни тёмные буквы на ней.
+              headerStyle: {backgroundColor: colors.white},
+              headerTintColor: colors.text,
+              headerTitleStyle: {fontWeight: '600', color: colors.text},
+              headerShadowVisible: true,
               contentStyle: {backgroundColor: colors.background},
-              // Язык и учётная запись в шапке на всех экранах. Отдельного раздела
-              // настроек нет, а кабинет открывается той же кнопкой.
+              // Язык, уведомления и учётная запись в шапке на всех экранах.
+              // Отдельного раздела настроек нет, кабинет открывается той же
+              // кнопкой. Порядок как на сайте: язык, колокольчик, учётная запись.
               headerRight: () => (
                 <View style={styles.headerActions}>
                   <LanguageSwitch />
+                  <NotificationsButton />
                   <AccountButton />
                 </View>
               )
             }}
           >
-            <Stack.Screen name="index" options={{title: 'Birklik.az'}} />
+            <Stack.Screen
+              name="index"
+              options={{
+                // Логотип вместо надписи — как в шапке сайта.
+                headerTitle: () => <HeaderLogo />,
+                headerTitleAlign: 'left',
+                // ⚠️ Стрелка «назад» на главном экране обязана отсутствовать.
+                // Expo Router рисует её, если в стопке что-то есть, — а после
+                // прогулки по объявлениям она там всегда есть. Возвращаться с
+                // главного некуда: это корень, и стрелка обманывала.
+                headerBackVisible: false,
+                headerLeft: () => null
+              }}
+            />
             {/* Заголовок ставит сама страница — там название объявления. */}
             <Stack.Screen name="property/[id]" options={{title: ''}} />
             <Stack.Screen name="account" options={{title: ''}} />
             <Stack.Screen name="notifications" options={{title: ''}} />
+            {/* Страницы из подвала сайта. Заголовок ставит сама страница — он
+                зависит от того, какой документ открыт. */}
+            <Stack.Screen name="legal/[page]" options={{title: ''}} />
             {/* Вход и регистрация приходят листом поверх содержимого: человек
                 попадает сюда из середины работы и должен вернуться туда же. */}
-            <Stack.Screen name="(auth)/login" options={{presentation: 'modal', title: ''}} />
-            <Stack.Screen name="(auth)/register" options={{presentation: 'modal', title: ''}} />
+            {/* На самих экранах входа в шапке остаётся только выбор языка.
+                Кнопка «Войти» там предлагала бы войти на экране входа, а
+                колокольчик и учётная запись гостю всё равно ни к чему. */}
+            <Stack.Screen
+              name="(auth)/login"
+              options={{presentation: 'modal', title: '', headerRight: () => <LanguageSwitch />}}
+            />
+            <Stack.Screen
+              name="(auth)/register"
+              options={{presentation: 'modal', title: '', headerRight: () => <LanguageSwitch />}}
+            />
             {/* Подтверждение почты жестом не закрыть: пока оно не пройдено,
                 уходить с него некуда. */}
             <Stack.Screen

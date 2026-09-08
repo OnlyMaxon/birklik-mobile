@@ -1,12 +1,14 @@
 import {useCallback, useEffect, useMemo, useState} from 'react'
-import {ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View} from 'react-native'
+import {ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View} from 'react-native'
 import {SafeAreaView} from 'react-native-safe-area-context'
+import {Ionicons} from '@expo/vector-icons'
 
 import {filterProperties} from '@birklik/core/data'
 import type {Property} from '@birklik/core/types'
 import {tierRank} from '@birklik/core/utils/premium-helper'
 
 import {FilterSheet} from '@/components/filter-sheet'
+import {PropertiesMap} from '@/components/properties-map'
 import {PropertyCard} from '@/components/property-card'
 import {SearchBar} from '@/components/search-bar'
 import {useFilters, type Filters} from '@/filters/use-filters'
@@ -34,6 +36,9 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
+  // Карта по умолчанию скрыта. На сайте она тоже приходит свёрнутой на узких
+  // экранах: карта тяжелее списка и на телефоне занимает его целиком.
+  const [mapOpen, setMapOpen] = useState(false)
 
   const load = useCallback(async () => {
     setError(null)
@@ -107,10 +112,35 @@ export default function HomeScreen() {
           onOpenFilters={() => setSheetOpen(true)}
           activeCount={activeCount}
         />
-        <Text style={styles.count}>
-          {visible.length} / {all.length}
-        </Text>
+        <View style={styles.countRow}>
+          <Text style={styles.count}>
+            {visible.length} / {all.length}
+          </Text>
+
+          {/* Переключатель карты — как кнопка «Показать карту» на сайте.
+              Подписи берём из общего пакета, свои не выдумываем. */}
+          <Pressable
+            onPress={() => setMapOpen(open => !open)}
+            style={[styles.mapToggle, mapOpen && styles.mapToggleActive]}
+            hitSlop={6}
+          >
+            <Ionicons
+              name={mapOpen ? 'list-outline' : 'map-outline'}
+              size={15}
+              color={mapOpen ? colors.white : colors.primary}
+            />
+            <Text style={[styles.mapToggleText, mapOpen && styles.mapToggleTextActive]}>
+              {mapOpen ? t.home.hideMap : t.home.showMap}
+            </Text>
+          </Pressable>
+        </View>
       </View>
+
+      {mapOpen && (
+        <View style={styles.mapWrap}>
+          <PropertiesMap properties={visible} />
+        </View>
+      )}
 
       <FlatList
         data={visible}
@@ -159,6 +189,29 @@ const styles = StyleSheet.create({
     gap: spacing.xs
   },
   count: {fontSize: fontSize.xs, color: colors.neutral, paddingLeft: spacing.xs},
+  countRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  mapToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.base,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray200
+  },
+  mapToggleActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
+  },
+  mapToggleText: {fontSize: fontSize.xs, fontWeight: '700', color: colors.primary},
+  mapToggleTextActive: {color: colors.white},
+  mapWrap: {paddingHorizontal: spacing.md, paddingBottom: spacing.sm},
   list: {paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md},
   empty: {alignItems: 'center', paddingVertical: spacing.xxl, gap: spacing.sm},
   emptyText: {fontSize: fontSize.base, color: colors.neutral, textAlign: 'center'},

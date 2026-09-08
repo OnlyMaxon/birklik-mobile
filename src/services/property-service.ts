@@ -17,6 +17,7 @@ import {isOnDisplay} from '@birklik/core/utils/display'
 import {tierRank} from '@birklik/core/utils/premium-helper'
 
 import {db} from '@/lib/firebase'
+import {withImageUrls} from '@/lib/images'
 
 /**
  * Выборка объявлений для витрины.
@@ -43,8 +44,13 @@ export interface PropertiesPage {
   cursor: PropertyCursor | null
 }
 
+/**
+ * Единственное место, где документ Firestore превращается в `Property`. Здесь же
+ * чинятся адреса картинок: часть из них записана относительным путём, а
+ * приложению нужен полный — см. `withImageUrls`.
+ */
 function toProperty(id: string, data: Record<string, unknown>): Property {
-  return {id, ...data} as Property
+  return withImageUrls({id, ...data} as Property)
 }
 
 /**

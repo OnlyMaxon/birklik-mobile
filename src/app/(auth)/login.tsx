@@ -1,10 +1,11 @@
 import {useState} from 'react'
-import {Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native'
+import {Alert, Pressable, StyleSheet, Text, View} from 'react-native'
 import {router} from 'expo-router'
 
 import {authErrorMessage} from '@birklik/core/utils/auth-errors'
 
 import {useAuth} from '@/auth/auth-provider'
+import {AuthScreen} from '@/components/auth-screen'
 import {FormField} from '@/components/form-field'
 import {PrimaryButton} from '@/components/primary-button'
 import {useLanguage} from '@/i18n/language-provider'
@@ -25,9 +26,16 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       await signIn(email, password)
-      // Куда идти дальше, решает защитный layout: у него есть и признак входа,
-      // и подтверждение почты. Отсюда просто уходим назад со стопки экранов.
-      router.back()
+      // ⚠️ На главный, а не `router.back()`.
+      //
+      // Раньше уходили назад по стопке — то есть туда, откуда человек нажал
+      // «Войти». Из середины прогулки по объявлениям это выглядело так, будто
+      // вход ничего не изменил. Теперь после успеха сразу витрина, с
+      // `replace` — чтобы кнопкой «назад» не вернуться в форму входа.
+      //
+      // Неподтверждённую почту перехватит защитный layout: он видит и вход, и
+      // подтверждение, и уведёт на свой экран сам.
+      router.replace('/')
     } catch (err) {
       setError(authErrorMessage(errorCode(err), language) ?? t.messages.error)
     } finally {
@@ -49,60 +57,65 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <AuthScreen
+      title={t.nav.login}
+      footer={
+        <Pressable onPress={() => router.replace('/register')} hitSlop={8}>
+          <Text style={styles.footerText}>
+            {t.auth.noAccount} <Text style={styles.footerLink}>{t.nav.register}</Text>
+          </Text>
+        </Pressable>
+      }
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>{t.nav.login}</Text>
+      <FormField
+        label={t.auth.email}
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        textContentType="emailAddress"
+      />
 
-        <FormField
-          label={t.auth.email}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          textContentType="emailAddress"
-        />
+      <FormField
+        label={t.auth.password}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        autoCapitalize="none"
+        textContentType="password"
+      />
 
-        <FormField
-          label={t.auth.password}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          textContentType="password"
-        />
+      <Pressable onPress={forgotPassword} style={styles.forgot} hitSlop={8}>
+        <Text style={styles.forgotText}>{t.auth.forgotPassword}</Text>
+      </Pressable>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
 
-        <PrimaryButton
-          title={t.nav.login}
-          onPress={submit}
-          loading={loading}
-          disabled={!email.trim() || !password}
-        />
-
-        <Pressable onPress={forgotPassword} style={styles.link}>
-          <Text style={styles.linkText}>{t.auth.forgotPassword}</Text>
-        </Pressable>
-
-        <View style={styles.divider} />
-
-        <Pressable onPress={() => router.replace('/register')} style={styles.link}>
-          <Text style={styles.linkText}>{t.nav.register}</Text>
-        </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      <PrimaryButton
+        title={t.nav.login}
+        onPress={submit}
+        loading={loading}
+        disabled={!email.trim() || !password}
+      />
+    </AuthScreen>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: {flex: 1, backgroundColor: colors.white},
-  content: {padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl},
-  title: {fontSize: fontSize.title, fontWeight: '700', color: colors.text, marginBottom: spacing.sm},
-  error: {color: colors.error, fontSize: fontSize.sm},
-  link: {alignItems: 'center', paddingVertical: spacing.sm},
-  linkText: {color: colors.primary, fontSize: fontSize.sm, fontWeight: '600'},
-  divider: {height: 1, backgroundColor: colors.gray200, marginVertical: spacing.sm}
+  forgot: {alignSelf: 'flex-end', paddingVertical: 2},
+  forgotText: {color: colors.primary, fontSize: fontSize.sm, fontWeight: '600'},
+  errorBox: {
+    backgroundColor: '#fdecea',
+    borderWidth: 1,
+    borderColor: colors.error,
+    borderRadius: 8,
+    padding: spacing.sm
+  },
+  errorText: {color: colors.error, fontSize: fontSize.sm, textAlign: 'center'},
+  footerText: {color: colors.neutral, fontSize: fontSize.sm},
+  footerLink: {color: colors.primary, fontWeight: '700'}
 })
