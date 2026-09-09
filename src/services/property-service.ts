@@ -127,6 +127,31 @@ export async function getOwnerProperties(ownerId: string): Promise<Property[]> {
 }
 
 /**
+ * Похожие объявления — те же правила отбора, что на сайте
+ * (`getSimilarProperties` в `src/app/property/[id]/queries.ts`): сперва по
+ * городу, а если города у записи нет — по типу жилья.
+ *
+ * Берём на одно больше десяти: в выборку может попасть само объявление, его
+ * отсеиваем. `isOnDisplay` обязателен — статус в базе отстаёт от срока тарифа
+ * до суток, пока не отработает ночная задача.
+ */
+export async function getSimilarProperties(property: Property): Promise<Property[]> {
+  const match = property.city
+    ? where('city', '==', property.city)
+    : where('type', '==', property.type)
+
+  const snapshot = await getDocs(
+    query(collection(db, 'properties'), where('status', '==', 'active'), match, limitTo(11))
+  )
+
+  return snapshot.docs
+    .map(doc => toProperty(doc.id, doc.data()))
+    .filter(isOnDisplay)
+    .filter(found => found.id !== property.id)
+    .slice(0, 10)
+}
+
+/**
  * Одно объявление по идентификатору.
  *
  * Скрытое с витрины возвращается как `null`, а не отдаётся по прямой ссылке:

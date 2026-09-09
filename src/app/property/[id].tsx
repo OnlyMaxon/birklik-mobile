@@ -1,15 +1,30 @@
 import {useEffect, useState} from 'react'
-import {ActivityIndicator, Dimensions, Linking, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native'
+import {
+  ActivityIndicator,
+  Dimensions,
+  Linking,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native'
 import {Image} from 'expo-image'
 import {Stack, useLocalSearchParams} from 'expo-router'
+import {Ionicons} from '@expo/vector-icons'
 
 import type {Property} from '@birklik/core/types'
 import {isTierActive} from '@birklik/core/utils/premium-helper'
 
+import {BookingCard} from '@/components/booking-card'
+import {CommentsSection} from '@/components/comments-section'
 import {FavoriteButton} from '@/components/favorite-button'
+import {RatingWidget} from '@/components/rating-widget'
+import {PropertyCard} from '@/components/property-card'
 import {PropertyMap} from '@/components/property-map'
 import {useLanguage} from '@/i18n/language-provider'
-import {getProperty} from '@/services/property-service'
+import {getProperty, getSimilarProperties} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 const {width} = Dimensions.get('window')
@@ -19,6 +34,7 @@ export default function PropertyScreen() {
   const {language, t} = useLanguage()
 
   const [property, setProperty] = useState<Property | null>(null)
+  const [similar, setSimilar] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -26,8 +42,16 @@ export default function PropertyScreen() {
     if (!id) return
     getProperty(id)
       .then(found => {
-        if (found) setProperty(found)
-        else setNotFound(true)
+        if (!found) {
+          setNotFound(true)
+          return
+        }
+        setProperty(found)
+        // Похожие грузим отдельно и молча: их отсутствие не повод портить
+        // страницу — раздел просто не появится.
+        getSimilarProperties(found)
+          .then(setSimilar)
+          .catch(() => setSimilar([]))
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false))
@@ -93,9 +117,34 @@ export default function PropertyScreen() {
             </View>
           )}
 
-          <Text style={styles.title}>{title}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{title}</Text>
+            {/* «Поделиться» — системное окно устройства. Ссылка ведёт на сайт:
+                у приложения нет своих адресов, а получатель может оказаться и
+                без приложения вовсе. */}
+            <Pressable
+              onPress={() =>
+                void Share.share({
+                  message: `${title}\nhttps://birklik.az/property/${property.id}`
+                })
+              }
+              hitSlop={8}
+              style={styles.shareButton}
+              accessibilityRole="button"
+              accessibilityLabel={t.buttons.share}
+            >
+              <Ionicons name="share-social-outline" size={20} color={colors.primary} />
+            </Pressable>
+          </View>
+
           <Text style={styles.location}>
             {[property.city, property.district].filter(Boolean).join(' · ')}
+          </Text>
+
+          {/* Код объявления — как `#{property.id}` на сайте. По нему владелец и
+              поддержка находят запись, поэтому он на виду, а не в подвале. */}
+          <Text style={styles.code} selectable>
+            #{property.id}
           </Text>
 
           {typeof property.price?.daily === 'number' && (
@@ -149,10 +198,12 @@ export default function PropertyScreen() {
             </Section>
           ) : null}
 
-          {/* Бронирования пока нет: календарь занятости и проверка
-              пересечений — отдельная работа. Звонок владельцу и на сайте
-              остаётся основным способом договориться, так что кнопка не
-              заглушка. */}
+          <Section title={t.property.bookingRequest}>
+            <BookingCard property={property} />
+          </Section>
+
+          {/* Звонок остаётся рядом с бронью, а не вместо неё: за всё время
+              работы площадки договаривались именно звонком. */}
           {phone ? (
             <Pressable
               style={styles.callButton}
@@ -161,7 +212,22 @@ export default function PropertyScreen() {
               <Text style={styles.callButtonText}>{t.property.contact}: {phone}</Text>
             </Pressable>
           ) : null}
+
+          <RatingWidget property={property} />
+
+          <Section title={t.property.comments}>
+            <CommentsSection property={property} />
+          </Section>
         </View>
+
+        {similar.length > 0 && (
+          <View style={styles.similar}>
+            <Text style={styles.similarTitle}>{t.property.similarListings}</Text>
+            {similar.map(item => (
+              <PropertyCard key={item.id} property={item} />
+            ))}
+          </View>
+        )}
       </ScrollView>
     </>
   )
@@ -209,8 +275,22 @@ const styles = StyleSheet.create({
   badgePremium: {backgroundColor: colors.accent},
   badgeVip: {backgroundColor: colors.secondary},
   badgeText: {color: colors.white, fontSize: fontSize.xs, fontWeight: '700', letterSpacing: 0.5},
-  title: {fontSize: fontSize.xxl, fontWeight: '700', color: colors.text},
+  titleRow: {flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm},
+  title: {flex: 1, fontSize: fontSize.xxl, fontWeight: '700', color: colors.text},
+  shareButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray50,
+    borderWidth: 1,
+    borderColor: colors.gray200
+  },
   location: {fontSize: fontSize.base, color: colors.neutral},
+  code: {fontSize: fontSize.xs, color: colors.gray400},
+  similar: {paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.md},
+  similarTitle: {fontSize: fontSize.lg, fontWeight: '700', color: colors.text},
   price: {fontSize: fontSize.title, fontWeight: '700', color: colors.primary, marginTop: spacing.xs},
   priceUnit: {fontSize: fontSize.base, fontWeight: '400', color: colors.neutral},
   facts: {
