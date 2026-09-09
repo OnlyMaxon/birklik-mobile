@@ -1,48 +1,66 @@
 import {useCallback, useEffect, useState} from 'react'
-import {ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View} from 'react-native'
-import {Link, router} from 'expo-router'
-
-import type {Property} from '@birklik/core/types'
-import {isTierActive, tierExpiresAt, tierRemainingDays} from '@birklik/core/utils/premium-helper'
-import {isOnDisplay} from '@birklik/core/utils/display'
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native'
+import {Image} from 'expo-image'
+import {type Href, router} from 'expo-router'
+import {Ionicons} from '@expo/vector-icons'
 
 import {useAuth} from '@/auth/auth-provider'
+import {AccountLinks} from '@/components/account/account-links'
 import {useLanguage} from '@/i18n/language-provider'
-import {getOwnerProperties} from '@/services/property-service'
-import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
+import {getOwnerBookings, getUserBookings} from '@/services/booking-service'
+import {getFavoriteProperties, getOwnerProperties} from '@/services/property-service'
+import {colors, fontSize, radius, spacing} from '@/theme/theme'
 
 /**
- * Кабинет.
+ * Кабинет — список разделов, а не вкладки.
  *
- * Показывает объявления владельца ЦЕЛИКОМ, включая снятые с витрины: истёкшие,
- * ожидающие модерации и черновики. Ровно за этим сюда и приходят — понять,
- * куда делось объявление, и продлить.
+ * ⚠️ Сначала здесь были вкладки-пилюли в горизонтальной прокрутке, как на
+ * сайте. На телефоне это оказалось плохо: четыре подписи не помещаются, часть
+ * уезжает за край, и человек не видит, что там ещё есть. На широком экране у
+ * сайта такой беды нет.
  *
- * Создания и правки объявлений здесь нет: форма с загрузкой десятка фотографий
- * и выбором места на карте — отдельная работа, и на сайте она сделана. Пока
- * приложение показывает состояние, а меняют его в браузере.
+ * Поэтому разделы разнесены по своим страницам, а здесь — их перечень с
+ * количеством. Разделы те же, что на сайте, ничего не убрано и не придумано.
  */
 export default function AccountScreen() {
-  const {t, language} = useLanguage()
+  const {t} = useLanguage()
   const {user, profile, isModerator, signOut} = useAuth()
 
-  const [listings, setListings] = useState<Property[]>([])
+  const [counts, setCounts] = useState({listings: 0, favorites: 0, bookings: 0})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
+  // Здесь нужны только количества для подписей — сами выборки делают свои
+  // страницы. Считаем разом: три коротких запроса дешевле, чем пустые цифры.
   const load = useCallback(async () => {
     if (!user) return
-    try {
-      setListings(await getOwnerProperties(user.uid))
-    } catch {
-      setListings([])
-    }
+    const [own, saved, mine, incoming] = await Promise.allSettled([
+      getOwnerProperties(user.uid),
+      getFavoriteProperties(user.uid),
+      getUserBookings(user.uid),
+      getOwnerBookings(user.uid)
+    ])
+    setCounts({
+      listings: own.status === 'fulfilled' ? own.value.length : 0,
+      favorites: saved.status === 'fulfilled' ? saved.value.length : 0,
+      bookings:
+        (mine.status === 'fulfilled' ? mine.value.length : 0) +
+        (incoming.status === 'fulfilled' ? incoming.value.length : 0)
+    })
   }, [user])
 
   useEffect(() => {
-    // Гость сюда попасть не должен: экран открывается только из шапки, а она
-    // показывает кнопку кабинета лишь вошедшим. Проверка на случай возврата
-    // назад после выхода.
+    // Гость сюда попасть не должен: кабинет открывается только из шапки, а она
+    // показывает кнопку лишь вошедшим. Проверка на случай возврата после выхода.
     if (!user) {
       router.replace('/')
       return
@@ -56,6 +74,19 @@ export default function AccountScreen() {
     setRefreshing(false)
   }, [load])
 
+  const logout = () =>
+    Alert.alert(t.buttons.logout, undefined, [
+      {
+        text: t.buttons.logout,
+        style: 'destructive',
+        onPress: () => {
+          void signOut()
+          router.replace('/')
+        }
+      },
+      {text: t.buttons.cancel, style: 'cancel'}
+    ])
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -64,185 +95,156 @@ export default function AccountScreen() {
     )
   }
 
+  const name = profile?.name || user?.email || ''
+
   return (
-    <FlatList
+    <ScrollView
       style={styles.screen}
-      data={listings}
-      keyExtractor={property => property.id}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
-      ListHeaderComponent={
-        <View style={styles.head}>
-          <Text style={styles.name}>{profile?.name || user?.email}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
-          {profile?.phone ? <Text style={styles.email}>{profile.phone}</Text> : null}
-          {isModerator ? (
-            <View style={styles.moderatorBadge}>
-              <Text style={styles.moderatorText}>{t.dashboard.moderation}</Text>
-            </View>
-          ) : null}
-
-          <Pressable style={styles.notifications} onPress={() => router.push('/notifications')}>
-            <Text style={styles.notificationsText}>{t.dashboard.notifications}</Text>
-          </Pressable>
-
-          <Text style={styles.sectionTitle}>
-            {t.nav.myListings} · {listings.length}
-          </Text>
-        </View>
-      }
-      renderItem={({item}) => <OwnerListing property={item} language={language} t={t} />}
-      ListEmptyComponent={
-        <Text style={styles.empty}>{t.dashboard.noListings}</Text>
-      }
-      ListFooterComponent={
-        <Pressable
-          style={styles.logout}
-          onPress={() =>
-            Alert.alert(t.buttons.logout, undefined, [
-              {
-                text: t.buttons.logout,
-                style: 'destructive',
-                onPress: () => {
-                  void signOut()
-                  router.replace('/')
-                }
-              },
-              {text: t.buttons.cancel, style: 'cancel'}
-            ])
-          }
-        >
-          <Text style={styles.logoutText}>{t.buttons.logout}</Text>
-        </Pressable>
-      }
-    />
-  )
-}
-
-function OwnerListing({
-  property,
-  language,
-  t
-}: {
-  property: Property
-  language: 'az' | 'en' | 'ru'
-  t: ReturnType<typeof useLanguage>['t']
-}) {
-  const onDisplay = isOnDisplay(property)
-  const premium = isTierActive(property, 'premium')
-  const vip = !premium && isTierActive(property, 'vip')
-  const days = tierRemainingDays(property)
-  const expires = tierExpiresAt(property)
-
-  // Подпись состояния читается из статуса, но «активно» ставится только если
-  // объявление ДЕЙСТВИТЕЛЬНО на витрине: между окончанием тарифа и ночной
-  // функцией статус ещё `active`, а показывать его уже перестали.
-  const label = !onDisplay
-    ? property.status === 'pending'
-      ? t.dashboard.pending
-      : t.dashboard.inactiveListing
-    : t.dashboard.activeListing
-
-  return (
-    <Link href={`/property/${property.id}`} asChild>
-      <Pressable style={({pressed}) => [styles.card, pressed && styles.cardPressed]}>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {property.title?.[language] || property.title?.az || ''}
-          </Text>
-          {(premium || vip) && (
-            <View style={[styles.tier, premium ? styles.tierPremium : styles.tierVip]}>
-              <Text style={styles.tierText}>{premium ? 'PREMIUM' : 'VIP'}</Text>
-            </View>
+    >
+      <View style={styles.head}>
+        <View style={styles.avatar}>
+          {profile?.avatar ? (
+            <Image source={{uri: profile.avatar}} style={styles.avatarImage} contentFit="cover" />
+          ) : (
+            <Text style={styles.avatarLetter}>{name.trim().charAt(0).toUpperCase() || '?'}</Text>
           )}
         </View>
-
-        <View style={styles.cardRow}>
-          <View style={[styles.status, onDisplay ? styles.statusOn : styles.statusOff]}>
-            <Text style={[styles.statusText, onDisplay ? styles.statusTextOn : styles.statusTextOff]}>
-              {label}
-            </Text>
-          </View>
-          {typeof property.price?.daily === 'number' ? (
-            <Text style={styles.price}>{property.price.daily} ₼</Text>
-          ) : null}
-        </View>
-
-        {/* Срок показываем только у платных: у обычного тарифа его нет,
-            и пустая строка «истекает —» вводила бы в заблуждение. */}
-        {expires ? (
-          <Text style={styles.expiry}>
-            {t.dashboard.planExpires} {expires.slice(0, 10)}
-            {days > 0 ? ` · ${days} ${t.common.days}` : ''}
+        <View style={styles.headText}>
+          <Text style={styles.name} numberOfLines={1}>
+            {name}
           </Text>
-        ) : null}
+          <Text style={styles.email} numberOfLines={1}>
+            {user?.email}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.group}>
+        <Row
+          icon="home-outline"
+          label={t.dashboard.myListings}
+          count={counts.listings}
+          to="/account/listings"
+        />
+        <Row icon="add-circle-outline" label={t.dashboard.addListing} to="/account/add" />
+        <Row
+          icon="bookmark-outline"
+          label={t.dashboard.favorites}
+          count={counts.favorites}
+          to="/account/favorites"
+        />
+        <Row
+          icon="calendar-outline"
+          label={t.dashboard.bookings}
+          count={counts.bookings}
+          to="/account/bookings"
+        />
+        <Row icon="notifications-outline" label={t.dashboard.notifications} to="/notifications" />
+        <Row icon="person-outline" label={t.dashboard.profile} to="/account/profile" last />
+      </View>
+
+      {isModerator ? (
+        <View style={styles.group}>
+          <Row
+            icon="shield-checkmark-outline"
+            label={t.dashboard.moderation}
+            to="/moderation"
+            accent
+            last
+          />
+        </View>
+      ) : null}
+
+      <AccountLinks />
+
+      <Pressable style={styles.logout} onPress={logout}>
+        <Text style={styles.logoutText}>{t.buttons.logout}</Text>
       </Pressable>
-    </Link>
+    </ScrollView>
   )
 }
+
+function Row({
+  icon,
+  label,
+  count,
+  to,
+  accent,
+  last
+}: {
+  icon: keyof typeof Ionicons.glyphMap
+  label: string
+  count?: number
+  to: Href
+  accent?: boolean
+  last?: boolean
+}) {
+  return (
+    <Pressable
+      onPress={() => router.push(to)}
+      style={({pressed}) => [styles.row, last && styles.rowLast, pressed && styles.rowPressed]}
+    >
+      <Ionicons name={icon} size={20} color={accent ? colors.primary : colors.gray500} />
+      <Text style={[styles.rowLabel, accent && styles.rowLabelAccent]}>{label}</Text>
+      {/* Количество только когда оно есть: «Избранное · 0» сообщает не больше,
+          чем «Избранное», а шума добавляет. */}
+      {count ? <Text style={styles.rowCount}>{count}</Text> : null}
+      <Ionicons name="chevron-forward" size={16} color={colors.gray400} />
+    </Pressable>
+  )
+}
+
+const AVATAR = 52
 
 const styles = StyleSheet.create({
   screen: {flex: 1, backgroundColor: colors.gray50},
-  center: {flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gray50},
-  list: {padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xxl},
-  head: {gap: spacing.xs, marginBottom: spacing.sm},
-  name: {fontSize: fontSize.xxl, fontWeight: '700', color: colors.text},
+  content: {padding: spacing.md, paddingBottom: spacing.xxl, gap: spacing.base},
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray50
+  },
+  head: {flexDirection: 'row', alignItems: 'center', gap: spacing.base},
+  avatar: {
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  avatarImage: {width: '100%', height: '100%'},
+  avatarLetter: {color: colors.white, fontSize: fontSize.xl, fontWeight: '700'},
+  headText: {flex: 1},
+  name: {fontSize: fontSize.lg, fontWeight: '700', color: colors.text},
   email: {fontSize: fontSize.sm, color: colors.neutral},
-  moderatorBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.secondary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    marginTop: spacing.xs
-  },
-  moderatorText: {color: colors.white, fontSize: fontSize.xs, fontWeight: '700'},
-  notifications: {
-    marginTop: spacing.base,
+  group: {
     backgroundColor: colors.white,
     borderRadius: radius.base,
-    paddingVertical: spacing.base,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    overflow: 'hidden'
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.base,
     paddingHorizontal: spacing.base,
-    ...shadow.sm
+    paddingVertical: spacing.base,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.gray200
   },
-  notificationsText: {fontSize: fontSize.base, fontWeight: '600', color: colors.text},
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    color: colors.gray700,
-    marginTop: spacing.md
-  },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: radius.base,
-    padding: spacing.base,
-    gap: spacing.sm,
-    ...shadow.sm
-  },
-  cardPressed: {opacity: 0.75},
-  cardHead: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
-  cardTitle: {flex: 1, fontSize: fontSize.base, fontWeight: '600', color: colors.text},
-  tier: {paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm},
-  tierPremium: {backgroundColor: colors.accent},
-  tierVip: {backgroundColor: colors.secondary},
-  tierText: {color: colors.white, fontSize: fontSize.xs, fontWeight: '700'},
-  cardRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  status: {paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm},
-  statusOn: {backgroundColor: '#e8f5ef'},
-  statusOff: {backgroundColor: colors.gray100},
-  statusText: {fontSize: fontSize.xs, fontWeight: '600'},
-  statusTextOn: {color: colors.primaryDark},
-  statusTextOff: {color: colors.gray600},
-  price: {fontSize: fontSize.base, fontWeight: '700', color: colors.primary},
-  expiry: {fontSize: fontSize.xs, color: colors.neutral},
-  empty: {
-    fontSize: fontSize.base,
-    color: colors.neutral,
-    textAlign: 'center',
-    paddingVertical: spacing.xl
-  },
-  logout: {alignItems: 'center', paddingVertical: spacing.lg, marginTop: spacing.md},
-  logoutText: {fontSize: fontSize.base, color: colors.error, fontWeight: '600'}
+  rowLast: {borderBottomWidth: 0},
+  rowPressed: {backgroundColor: colors.gray50},
+  rowLabel: {flex: 1, fontSize: fontSize.base, color: colors.text},
+  rowLabelAccent: {color: colors.primary, fontWeight: '600'},
+  rowCount: {fontSize: fontSize.sm, color: colors.neutral},
+  logout: {alignItems: 'center', paddingVertical: spacing.base},
+  logoutText: {color: colors.error, fontSize: fontSize.sm, fontWeight: '600'}
 })

@@ -113,6 +113,9 @@ export default function RootLayout() {
             <Stack.Screen name="property/[id]" options={{title: ''}} />
             <Stack.Screen name="account" options={{title: ''}} />
             <Stack.Screen name="notifications" options={{title: ''}} />
+            {/* Модераторка. Право проверяется на самом экране по заявке из
+                токена — маршрут скрывать бессмысленно, решают правила. */}
+            <Stack.Screen name="moderation" options={{title: ''}} />
             {/* Страницы из подвала сайта. Заголовок ставит сама страница — он
                 зависит от того, какой документ открыт. */}
             <Stack.Screen name="legal/[page]" options={{title: ''}} />

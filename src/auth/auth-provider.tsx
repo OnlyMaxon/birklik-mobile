@@ -64,6 +64,8 @@ interface AuthValue {
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   resendVerification: () => Promise<void>
+  /** Правка своего профиля: имя и телефон. Почта не меняется — она и есть учётная запись. */
+  updateProfile: (payload: {name: string; phone: string}) => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -208,6 +210,24 @@ export function AuthProvider({children}: {children: ReactNode}) {
 
       resendVerification: async () => {
         if (auth.currentUser) await sendEmailVerification(auth.currentUser)
+      },
+
+      updateProfile: async ({name, phone}) => {
+        const current = auth.currentUser
+        if (!current) throw new Error('not-authenticated')
+
+        // merge, а не перезапись: в документе профиля лежит ещё аватар, а у
+        // части людей — признак isModerator, которым пользуется серверная
+        // рассылка жалоб. Перезапись стёрла бы и то и другое.
+        await setDoc(doc(db, 'users', current.uid), {name, phone}, {merge: true})
+
+        // Имя дублируется в саму учётку Firebase: оттуда его берут места, где
+        // документа профиля под рукой нет.
+        await updateProfile(current, {displayName: name})
+
+        setProfile(previous =>
+          previous ? {...previous, name, phone} : {id: current.uid, name, email: current.email ?? '', phone}
+        )
       }
     }),
     [user, profile, loading, emailVerified, refreshUser, isModerator]

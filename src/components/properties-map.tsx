@@ -11,7 +11,7 @@ import {
 import {basemap} from '@birklik/core/utils/basemap'
 import type {Property} from '@birklik/core/types'
 
-import {colors, fontSize, radius, spacing} from '@/theme/theme'
+import {colors, radius, spacing} from '@/theme/theme'
 
 type Props = {
   properties: Property[]

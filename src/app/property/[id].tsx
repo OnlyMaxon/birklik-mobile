@@ -10,7 +10,6 @@ import {
   Text,
   View
 } from 'react-native'
-import {Image} from 'expo-image'
 import {Stack, useLocalSearchParams} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -22,6 +21,7 @@ import {CommentsSection} from '@/components/comments-section'
 import {FavoriteButton} from '@/components/favorite-button'
 import {RatingWidget} from '@/components/rating-widget'
 import {PropertyCard} from '@/components/property-card'
+import {PropertyGallery} from '@/components/property-gallery'
 import {PropertyMap} from '@/components/property-map'
 import {useLanguage} from '@/i18n/language-provider'
 import {getProperty, getSimilarProperties} from '@/services/property-service'
@@ -87,24 +87,11 @@ export default function PropertyScreen() {
     <>
       <Stack.Screen options={{title}} />
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        {/* Галерея горизонтальной прокруткой. Без обрезки по высоте:
-            владельцы жалуются, когда карточку режет, — на сайте это уже
-            правили, здесь сразу так. */}
-        {property.images?.length ? (
-          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
-            {property.images.map((uri, index) => (
-              <Image
-                key={`${uri}-${index}`}
-                source={{uri}}
-                style={styles.slide}
-                contentFit="cover"
-                transition={150}
-              />
-            ))}
-          </ScrollView>
-        ) : (
-          <View style={[styles.slide, styles.slideEmpty]} />
-        )}
+        {/* Галерея — со счётчиком, лентой миниатюр и просмотром на весь экран.
+            Кадр не обрезается, поля заполняет он же в размытии: ровно так
+            устроена галерея на сайте, и ровно из-за обрезки владельцы там
+            когда-то жаловались. */}
+        <PropertyGallery images={property.images ?? []} />
 
         <View style={styles.favorite}>
           <FavoriteButton propertyId={property.id} favorites={property.favorites} size="large" />

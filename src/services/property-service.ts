@@ -7,42 +7,28 @@ import {
   limit as limitTo,
   orderBy,
   query,
-  startAfter,
   where,
   type QueryConstraint
 } from '@react-native-firebase/firestore'
 
 import type {Property} from '@birklik/core/types'
 import {isOnDisplay} from '@birklik/core/utils/display'
-import {tierRank} from '@birklik/core/utils/premium-helper'
 
 import {db} from '@/lib/firebase'
 import {withImageUrls} from '@/lib/images'
 
 /**
- * Выборка объявлений для витрины.
+ * Объявления из Firestore.
  *
  * Повторяет то, что делает сайт в `src/app/queries.ts`, и намеренно теми же
- * правилами из общего пакета: `isOnDisplay` решает, что показывать, `tierRank` —
- * в каком порядке. Разойтись эти две реализации не должны.
+ * правилами из общего пакета: `isOnDisplay` решает, что показывать. Разойтись
+ * эти две реализации не должны.
  *
  * Разница только в способе доступа: сайт читает Firestore на сервере под
  * сервис-аккаунтом и в обход правил, приложение — клиентским SDK под правилами.
  * Для коллекции `properties` чтение открыто всем (`allow read: if true`), так
  * что витрина работает и без входа.
  */
-
-const PAGE_SIZE = 20
-
-export interface PropertyCursor {
-  createdAt: string
-  id: string
-}
-
-export interface PropertiesPage {
-  properties: Property[]
-  cursor: PropertyCursor | null
-}
 
 /**
  * Единственное место, где документ Firestore превращается в `Property`. Здесь же
@@ -51,29 +37,6 @@ export interface PropertiesPage {
  */
 function toProperty(id: string, data: Record<string, unknown>): Property {
   return withImageUrls({id, ...data} as Property)
-}
-
-/**
- * Платные объявления — их показывают выше остальных.
- *
- * Тариф спрашивается у Firestore, срок проверяется здесь: в базе лежит только
- * `status`, а его переставляет ночная функция, и до её прогона истёкшее
- * объявление формально ещё активно.
- */
-export async function getPromotedProperties(city?: string): Promise<Property[]> {
-  const constraints: QueryConstraint[] = [
-    where('status', '==', 'active'),
-    ...(city ? [where('city', '==', city)] : []),
-    where('listingTier', 'in', ['vip', 'premium']),
-    limitTo(100)
-  ]
-
-  const snapshot = await getDocs(query(collection(db, 'properties'), ...constraints))
-
-  return snapshot.docs
-    .map(doc => toProperty(doc.id, doc.data()))
-    .filter(isOnDisplay)
-    .sort((a, b) => tierRank(b) - tierRank(a))
 }
 
 /**
@@ -99,6 +62,27 @@ export async function getAllForFilter(city?: string): Promise<Property[]> {
   ]
 
   const snapshot = await getDocs(query(collection(db, 'properties'), ...constraints))
+  return snapshot.docs.map(doc => toProperty(doc.id, doc.data())).filter(isOnDisplay)
+}
+
+/**
+ * Отмеченные «сохранить».
+ *
+ * Отбор идёт по массиву внутри самого объявления (`array-contains`), а не по
+ * списку у пользователя: так же читает сайт, и отметку ставит тот же
+ * `arrayUnion` на том же поле. Отдельной коллекции избранного нет.
+ *
+ * `isOnDisplay` применяется: сохранённое объявление могли снять с витрины, и
+ * вести человека на страницу, которая ответит «не найдено», незачем.
+ */
+export async function getFavoriteProperties(userId: string): Promise<Property[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'properties'),
+      where('favorites', 'array-contains', userId),
+      limitTo(100)
+    )
+  )
   return snapshot.docs.map(doc => toProperty(doc.id, doc.data())).filter(isOnDisplay)
 }
 
@@ -158,10 +142,13 @@ export async function getSimilarProperties(property: Property): Promise<Property
  * ровно эту дыру закрывал аудит на сайте — там страница открывалась при любом
  * статусе, включая неоплаченные черновики и не прошедшие модерацию.
  *
- * Владелец и модератор на сайте видят СВОЁ объявление в любом статусе — им
- * нужно его проверить и продлить. Здесь такого исключения пока нет, хотя вход
- * уже появился: не хватает заявки модератора из токена и экрана кабинета.
- * Делать по образцу `src/app/property/[id]/page.tsx` в веб-репозитории.
+ * Владелец и модератор своё скрытое объявление всё равно видят, просто другим
+ * путём: владелец — через `getOwnerProperties` в кабинете, модератор — через
+ * `getAllProperties` в модераторке. Обе выборки `isOnDisplay` не применяют,
+ * потому что именно снятое им и нужно — проверить, поправить, продлить.
+ *
+ * То есть исключения здесь нет намеренно: эта функция обслуживает страницу
+ * объявления, куда приходят по ссылке, а туда скрытому ходу нет.
  */
 export async function getProperty(id: string): Promise<Property | null> {
   const snapshot = await getDoc(doc(db, 'properties', id))
@@ -171,43 +158,3 @@ export async function getProperty(id: string): Promise<Property | null> {
   return isOnDisplay(property) ? property : null
 }
 
-/**
- * Обычная страница выдачи, от новых к старым.
- *
- * Вторым ключом сортировки идёт идентификатор документа — без него курсор
- * становится двусмысленным, когда несколько объявлений созданы в одну
- * миллисекунду, и часть выдачи может пропасть или повториться.
- *
- * Берётся на одно больше страницы: так видно, есть ли продолжение, и не нужен
- * отдельный запрос за этим.
- */
-export async function getPropertiesPage(
-  cursor: PropertyCursor | null,
-  city?: string
-): Promise<PropertiesPage> {
-  const constraints: QueryConstraint[] = [
-    where('status', '==', 'active'),
-    ...(city ? [where('city', '==', city)] : []),
-    orderBy('createdAt', 'desc'),
-    orderBy(documentId(), 'desc'),
-    ...(cursor ? [startAfter(cursor.createdAt, cursor.id)] : []),
-    limitTo(PAGE_SIZE + 1)
-  ]
-
-  const snapshot = await getDocs(query(collection(db, 'properties'), ...constraints))
-  const rows = snapshot.docs.map(doc => toProperty(doc.id, doc.data()))
-
-  // Отсев по дате идёт ПОСЛЕ выборки, поэтому на странице может остаться меньше
-  // двадцати. Это осознанно: досеивать в запросе Firestore нечем, а докладывать
-  // до полной страницы — значит делать второй запрос ради косметики.
-  const hasMore = rows.length > PAGE_SIZE
-  const page = rows.slice(0, PAGE_SIZE)
-  const last = page[page.length - 1]
-
-  return {
-    properties: page.filter(isOnDisplay),
-    // Курсор строится по createdAt: нет его — продолжать нечем, и страница
-    // считается последней, а не отдаёт заведомо битый курсор.
-    cursor: hasMore && last?.createdAt ? {createdAt: last.createdAt, id: last.id} : null
-  }
-}

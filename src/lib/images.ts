@@ -16,7 +16,7 @@ import {toImageApiUrl} from '@birklik/core/utils/images'
  */
 const SITE_ORIGIN = 'https://birklik.az'
 
-export function imageUrl(source: string | undefined): string | undefined {
+function imageUrl(source: string | undefined): string | undefined {
   return toImageApiUrl(source, SITE_ORIGIN)
 }
 

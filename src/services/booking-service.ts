@@ -1,8 +1,10 @@
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   query,
+  updateDoc,
   where
 } from '@react-native-firebase/firestore'
 
@@ -37,6 +39,37 @@ export class BookingConflictError extends Error {
 }
 
 const COLLECTION = 'bookings'
+
+/**
+ * Брони человека — те, что он оформил сам.
+ *
+ * Сортировка в памяти, а не запросом: `orderBy('createdAt')` молча выбрасывает
+ * записи без этого поля, а в боевой базе такие есть. На сайте на этом уже
+ * горели — часть броней просто не показывалась.
+ */
+export async function getUserBookings(userId: string): Promise<Booking[]> {
+  const snapshot = await getDocs(
+    query(collection(db, COLLECTION), where('userId', '==', userId))
+  )
+  return snapshot.docs
+    .map(d => ({id: d.id, ...d.data()}) as Booking)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+}
+
+/**
+ * Заявки на брони объявлений владельца — то, на что ему отвечать.
+ *
+ * Отбор по `ownerId`, а не по списку своих объявлений: так один запрос вместо
+ * двух, и поле в брони проставляется при создании.
+ */
+export async function getOwnerBookings(ownerId: string): Promise<Booking[]> {
+  const snapshot = await getDocs(
+    query(collection(db, COLLECTION), where('ownerId', '==', ownerId))
+  )
+  return snapshot.docs
+    .map(d => ({id: d.id, ...d.data()}) as Booking)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+}
 
 /** Брони объявления, занимающие даты: подтверждённые и ожидающие ответа. */
 export async function getBlockingBookings(propertyId: string): Promise<Booking[]> {
@@ -107,4 +140,38 @@ export async function createBooking({
 
   const created = await addDoc(collection(db, COLLECTION), data)
   return {id: created.id, ...data}
+}
+
+/**
+ * Ответ владельца на заявку.
+ *
+ * Правила разрешают это только владельцу объявления и только для брони в
+ * статусе `pending` — проверять роль здесь не нужно, откажет Firestore.
+ * Отдельного поля даты ответа для отказа и согласия два, как на сайте.
+ */
+export async function respondToBooking(
+  bookingId: string,
+  approve: boolean,
+  reason?: string
+): Promise<void> {
+  const now = new Date().toISOString()
+  await updateDoc(
+    doc(db, COLLECTION, bookingId),
+    approve
+      ? {status: 'approved', approvedAt: now}
+      : {status: 'rejected', rejectedAt: now, rejectionReason: reason || 'No reason provided'}
+  )
+}
+
+/**
+ * Отмена гостем.
+ *
+ * Ожидающую заявку гость снимает сам. Подтверждённую — только просит отменить:
+ * правила разрешают ему перевести `approved` в `cancellation_requested` и не
+ * дают отменить напрямую, потому что владелец уже держит под неё даты.
+ */
+export async function cancelBooking(booking: Booking): Promise<void> {
+  await updateDoc(doc(db, COLLECTION, booking.id), {
+    status: booking.status === 'approved' ? 'cancellation_requested' : 'cancelled'
+  })
 }
