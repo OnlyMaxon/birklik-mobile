@@ -1,5 +1,4 @@
 import {
-  endConnection,
   fetchProducts,
   finishTransaction,
   getAvailablePurchases,
@@ -31,7 +30,6 @@ import {auth} from '@/lib/firebase'
  * задаёт Google ценовыми уровнями, и показываем мы то, что вернул магазин.
  */
 export const PLAN_PRODUCTS = ['vip_14', 'vip_30', 'premium_14', 'premium_30'] as const
-export type PlanProductId = (typeof PLAN_PRODUCTS)[number]
 
 /** Разбор имени товара на тариф и срок — для подписей на экране. */
 export function planOf(productId: string): {tier: 'vip' | 'premium'; days: 14 | 30} | null {
@@ -57,20 +55,14 @@ let connected = false
 /**
  * Подключение к магазину. Идемпотентно: экран может открыться несколько раз.
  *
- * Разрывать соединение при уходе с экрана НЕ надо — `endConnection` освобождает
- * его на всё приложение, и вернувшийся человек получил бы пустой список
- * тарифов. Держим до закрытия приложения.
+ * Разрывать соединение не нужно нигде: `endConnection` освобождает его на всё
+ * приложение, и вернувшийся человек получил бы пустой список тарифов. Держим до
+ * закрытия приложения — поэтому обратной функции здесь намеренно нет.
  */
 export async function connectStore(): Promise<void> {
   if (connected) return
   await initConnection()
   connected = true
-}
-
-export async function disconnectStore(): Promise<void> {
-  if (!connected) return
-  connected = false
-  await endConnection()
 }
 
 /**

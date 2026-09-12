@@ -37,7 +37,6 @@ export interface PurchaseFlow {
   /** Идёт оплата или проверка чека — кнопки должны быть заперты. */
   busy: boolean
   error: string
-  setError: (value: string) => void
   /** Открыть окно оплаты. Покупка привязывается к объявлению у Google. */
   start: (productId: string, propertyId: string) => void
   /**
@@ -151,5 +150,5 @@ export function usePurchaseFlow(
     })
   }, [])
 
-  return {plans, busy, error, setError, start, prepare}
+  return {plans, busy, error, start, prepare}
 }
