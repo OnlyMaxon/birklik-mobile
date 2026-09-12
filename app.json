@@ -50,7 +50,8 @@
       ],
       "expo-dev-client",
       "expo-localization",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "expo-iap"
     ],
     "experiments": {
       "typedRoutes": true,

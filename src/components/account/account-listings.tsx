@@ -1,4 +1,4 @@
-import {Pressable, StyleSheet, Text, View} from 'react-native'
+import {Platform, Pressable, StyleSheet, Text, View} from 'react-native'
 import {Link, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -88,14 +88,32 @@ function OwnerListing({property}: {property: Property}) {
 
         {/* Правка отдельной кнопкой, а не по нажатию на карточку: карточка
             ведёт на само объявление, и путать эти два перехода нельзя. */}
-        <Pressable
-          style={styles.edit}
-          onPress={() => router.push({pathname: '/account/edit/[id]', params: {id: property.id}})}
-          hitSlop={6}
-        >
-          <Ionicons name="create-outline" size={15} color={colors.primary} />
-          <Text style={styles.editText}>{t.dashboard.edit}</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <Pressable
+            style={styles.action}
+            onPress={() => router.push({pathname: '/account/edit/[id]', params: {id: property.id}})}
+            hitSlop={6}
+          >
+            <Ionicons name="create-outline" size={15} color={colors.primary} />
+            <Text style={styles.actionText}>{t.dashboard.edit}</Text>
+          </Pressable>
+
+          {/* Продвижение — ТОЛЬКО на Android. В App Store товаров ещё нет, а
+              показывать тарифы без возможности купить нельзя: уводить на оплату
+              на сайте запрещает правило 3.1.1(a), и получился бы тупик. */}
+          {Platform.OS === 'android' ? (
+            <Pressable
+              style={styles.action}
+              onPress={() =>
+                router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+              }
+              hitSlop={6}
+            >
+              <Ionicons name="trending-up-outline" size={15} color={colors.primary} />
+              <Text style={styles.actionText}>{t.promote.title}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </Pressable>
     </Link>
   )
@@ -127,12 +145,7 @@ const styles = StyleSheet.create({
   statusTextOff: {color: colors.gray500},
   price: {fontSize: fontSize.base, fontWeight: '700', color: colors.primary},
   expiry: {fontSize: fontSize.xs, color: colors.gray500},
-  edit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 4,
-    paddingTop: spacing.xs
-  },
-  editText: {fontSize: fontSize.sm, color: colors.primary, fontWeight: '600'}
+  actions: {flexDirection: 'row', gap: spacing.base, paddingTop: spacing.xs},
+  action: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  actionText: {fontSize: fontSize.sm, color: colors.primary, fontWeight: '600'}
 })
