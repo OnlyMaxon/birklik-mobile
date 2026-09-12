@@ -134,4 +134,3 @@ export const fontSize = {
 
 export const theme = {colors, radius, shadow, spacing, fonts, fontSize} as const
 
-export type Theme = typeof theme
