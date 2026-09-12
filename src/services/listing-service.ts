@@ -77,6 +77,15 @@ export interface NewListing {
   coordinates: {lat: number; lng: number}
   images: string[]
   owner: {name: string; phone: string; email: string}
+  /**
+   * Тариф, выбранный при подаче. По умолчанию бесплатный.
+   *
+   * ⚠️ От него зависит СТАТУС, и это требование правил, а не удобство:
+   * `standard` обязан создаваться со `pending`, платный — с `draft`. Правила
+   * проверяют эту пару дословно и отклоняют любое другое сочетание. Платное
+   * объявление выходит из `draft` только когда сервер подтвердит оплату.
+   */
+  tier?: 'standard' | 'vip' | 'premium'
 }
 
 export interface PickedImage {
@@ -164,6 +173,8 @@ export async function createListing(listing: NewListing): Promise<string> {
   const userId = auth.currentUser?.uid
   if (!userId) throw new Error('not-authenticated')
 
+  const tier = listing.tier ?? 'standard'
+
   const now = new Date().toISOString()
 
   // Заголовок и описание кладутся во все три языка одинаковыми — так же
@@ -191,11 +202,15 @@ export async function createListing(listing: NewListing): Promise<string> {
     images: listing.images,
     owner: listing.owner,
     ownerId: userId,
-    // Ниже — то, что правила проверяют дословно. Платный тариф и признак
-    // «избранное площадкой» клиенту не отдаются: их ставит только сервер после
-    // подтверждённой оплаты.
-    listingTier: 'standard',
-    status: 'pending',
+    // Ниже — то, что правила проверяют дословно, парой. `isFeatured` и сроки
+    // платных тарифов клиенту не отдаются ни при каком тарифе: их ставит только
+    // сервер после подтверждённой оплаты (`applyPaidTier`).
+    //
+    // Платное объявление создаётся ЧЕРНОВИКОМ и на витрину не попадает, пока
+    // оплата не подтверждена. Так же устроен сайт: иначе неоплаченный премиум
+    // висел бы наверху выдачи.
+    listingTier: tier,
+    status: tier === 'standard' ? 'pending' : 'draft',
     isFeatured: false,
     isActive: true,
     views: 0,

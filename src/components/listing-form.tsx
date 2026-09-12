@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useState, type ReactNode} from 'react'
 import {
   Image,
   KeyboardAvoidingView,
@@ -56,6 +56,14 @@ type Props = {
   saving: boolean
   error: string
   onSubmit: (values: ListingFormValues) => void
+  /**
+   * Блок над полями. Сейчас сюда подаётся выбор тарифа при подаче объявления.
+   *
+   * Сделано вставкой, а не полем формы: выбор тарифа требует связи с магазином —
+   * цены приходят оттуда, — и тащить это в форму, общую с правкой и с
+   * модераторкой, значило бы подключать магазин там, где он не нужен.
+   */
+  header?: ReactNode
 }
 
 const STATUSES = ['active', 'pending', 'inactive', 'draft']
@@ -74,7 +82,15 @@ const TIERS: Array<'standard' | 'vip' | 'premium'> = ['standard', 'vip', 'premiu
  * Модератору тариф доступен — так на сайте выдают премиум после оплаты вне
  * Azericard.
  */
-export function ListingForm({property, moderator, submitLabel, saving, error, onSubmit}: Props) {
+export function ListingForm({
+  property,
+  moderator,
+  submitLabel,
+  saving,
+  error,
+  onSubmit,
+  header
+}: Props) {
   const {t, language} = useLanguage()
 
   const [title, setTitle] = useState(property?.title?.az ?? '')
@@ -195,6 +211,8 @@ export function ListingForm({property, moderator, submitLabel, saving, error, on
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {header}
+
         <FormField label={t.listing.createTitle} value={title} onChangeText={setTitle} />
 
         <View>
