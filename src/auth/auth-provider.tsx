@@ -21,6 +21,7 @@ import {
 import {doc, getDoc, setDoc} from '@react-native-firebase/firestore'
 
 import {auth, db} from '@/lib/firebase'
+import {removePushToken} from '@/services/push-service'
 
 /**
  * Вход в приложении.
@@ -201,6 +202,17 @@ export function AuthProvider({children}: {children: ReactNode}) {
       },
 
       signOut: async () => {
+        // Токен пушей снимается ДО выхода, иначе его уже не снять: правила
+        // разрешают писать в профиль только самому владельцу, а после выхода
+        // `request.auth` пуст. Оставленный токен означает, что уведомления
+        // прежнего человека продолжат приходить на это устройство — и следующий
+        // прочтёт чужое на заблокированном экране.
+        //
+        // Берём `auth.currentUser`, а не `user` из состояния: здесь важен тот,
+        // кто вошёл на самом деле, а не то, что успел увидеть React.
+        const current = auth.currentUser
+        if (current) await removePushToken(current.uid)
+
         await firebaseSignOut(auth)
       },
 

@@ -10,6 +10,7 @@ import {AccountButton} from '@/components/account-button'
 import {HeaderLogo} from '@/components/header-logo'
 import {LanguageSwitch} from '@/components/language-switch'
 import {NotificationsButton} from '@/components/notifications-button'
+import {PushRegistrar} from '@/components/push-registrar'
 import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
 import {colors, fontSize, spacing} from '@/theme/theme'
@@ -72,6 +73,9 @@ export default function RootLayout() {
         <AuthProvider>
           {/* Шапка светлая, поэтому и значки строки состояния тёмные. */}
           <StatusBar style="dark" />
+          {/* Пуши: регистрация токена и переходы по нажатию. Ничего не рисует,
+              но обязан быть внутри AuthProvider — токен пишется в профиль. */}
+          <PushRegistrar />
           <Stack
             screenOptions={{
               // Шапка белая с серой чертой снизу — как `.header` на сайте.

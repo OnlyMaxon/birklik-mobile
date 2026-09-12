@@ -1,4 +1,4 @@
-import {Linking, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Pressable, StyleSheet, Text, View} from 'react-native'
 import {Link, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -30,30 +30,6 @@ export function AccountListings({listings}: Props) {
       {listings.map(property => (
         <OwnerListing key={property.id} property={property} />
       ))}
-
-      {/* Где продвигать объявление.
-          ⚠️ Кнопка показывается ТОЛЬКО на Android. Google разрешает уводить на
-          внешнюю оплату для услуг реального мира, Apple правилом 3.1.1 —
-          запрещает, и рецензент цепляется именно за кнопку. Само продвижение
-          под комиссию не подпадает (исключение 3.1.3(e), реклама реальной
-          услуги), но спорить об этом на первой проверке дороже.
-          Текст объясняет действие целиком: одного адреса мало — человеку надо
-          знать, что войти нужно под той же учётной записью. */}
-      <View style={styles.promote}>
-        <Ionicons name="trending-up-outline" size={18} color={colors.primary} />
-        <View style={styles.promoteBody}>
-          <Text style={styles.promoteText}>{t.dashboard.promoteHint}</Text>
-
-          {Platform.OS === 'android' ? (
-            <Pressable
-              style={styles.promoteButton}
-              onPress={() => void Linking.openURL('https://birklik.az/dashboard')}
-            >
-              <Text style={styles.promoteButtonText}>{t.dashboard.promoteOpen}</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
     </View>
   )
 }
@@ -128,26 +104,6 @@ function OwnerListing({property}: {property: Property}) {
 const styles = StyleSheet.create({
   list: {gap: spacing.sm},
   empty: {fontSize: fontSize.sm, color: colors.neutral, paddingVertical: spacing.lg},
-  promote: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.base,
-    padding: spacing.base,
-    borderRadius: radius.base,
-    backgroundColor: colors.gray50,
-    borderWidth: 1,
-    borderColor: colors.gray200
-  },
-  promoteBody: {flex: 1, gap: spacing.sm},
-  promoteText: {fontSize: fontSize.sm, color: colors.gray700, lineHeight: 20},
-  promoteButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.base,
-    paddingVertical: 8,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primary
-  },
-  promoteButtonText: {color: colors.white, fontSize: fontSize.sm, fontWeight: '700'},
   card: {
     backgroundColor: colors.white,
     borderRadius: radius.base,
