@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "az.birklik.app",
+      "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#2E7D5B",

@@ -55,3 +55,4 @@ example
 *.apk
 *.aab
 *.ipa
+keystore.properties
