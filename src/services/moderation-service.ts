@@ -8,10 +8,12 @@ import {
   updateDoc,
   where
 } from '@react-native-firebase/firestore'
+import {deleteObject, ref} from '@react-native-firebase/storage'
 
 import type {Booking, Comment, CommentReport, Property} from '@birklik/core/types'
+import {storagePathFromImageSource} from '@birklik/core/utils/images'
 
-import {db} from '@/lib/firebase'
+import {db, storage} from '@/lib/firebase'
 
 /**
  * Модераторка.
@@ -68,8 +70,56 @@ export async function setPropertyActive(propertyId: string, active: boolean): Pr
   })
 }
 
-/** Удаление объявления модератором. */
+/**
+ * Удаление объявления модератором — вместе с фотографиями и бронями.
+ *
+ * ⚠️ Раньше удалялся ОДИН документ. Фотографии оставались в хранилище навсегда:
+ * после удаления документа их адреса брать неоткуда, а лежат они в папке по
+ * ЗАГРУЗИВШЕМУ, а не по объявлению — то есть «папку объявления» не удалить, её
+ * не существует. Брони тоже оставались и начинали ссылаться в пустоту. На сайте
+ * `deleteProperty` делает всё это с самого начала, здесь не делал никто.
+ *
+ * Порядок тот же, что на сайте: сперва снимки, потом брони, документ последним.
+ * Иначе первая же ошибка оставила бы объявление без фотографий, но на витрине.
+ */
 export async function deleteProperty(propertyId: string): Promise<void> {
+  try {
+    const snapshot = await getDoc(doc(db, 'properties', propertyId))
+    const images = (snapshot.data() as Property | undefined)?.images ?? []
+
+    for (const url of images) {
+      // Адрес в базе бывает трёх видов: путь сайта `/api/images/...`, полная
+      // ссылка Storage с токеном (так пишет приложение) и старый `gs://`.
+      // Разбирает их общая с сайтом `storagePathFromImageSource`.
+      const path = storagePathFromImageSource(url)
+      if (!path) continue
+
+      try {
+        await deleteObject(ref(storage, path))
+      } catch {
+        // ⚠️ Правила Storage пускают к удалению только того, кто файл загрузил:
+        // в пути стоит `request.auth.uid == userId`. Чужие снимки модератор
+        // удалить не может, и это не чинится из клиента — их подберёт
+        // еженедельная чистка сирот. Падать нельзя: объявление убрать надо в
+        // любом случае.
+      }
+    }
+  } catch {
+    // Не прочитали документ — значит и снимков не знаем. Удаление самого
+    // объявления это отменять не должно.
+  }
+
+  try {
+    const bookings = await getDocs(
+      query(collection(db, 'bookings'), where('propertyId', '==', propertyId))
+    )
+    // Через `deleteBookingAsModerator`, а не напрямую: он заодно уносит запросы
+    // на отмену, которые иначе копятся — на сайте их так накопилось 52.
+    for (const booking of bookings.docs) await deleteBookingAsModerator(booking.id)
+  } catch {
+    // Та же причина: уборка не отменяет главного действия.
+  }
+
   await deleteDoc(doc(db, 'properties', propertyId))
 }
 
