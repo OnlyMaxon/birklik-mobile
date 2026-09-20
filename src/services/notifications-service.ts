@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit as limitTo,
@@ -83,4 +84,19 @@ export async function markAllAsRead(userId: string): Promise<void> {
   const batch = writeBatch(db)
   snapshot.docs.forEach(d => batch.update(d.ref, {read: true}))
   await batch.commit()
+}
+
+/**
+ * Удаляет уведомление насовсем.
+ *
+ * Отдельно от `markAsRead` намеренно — это разные действия, и путать их нельзя:
+ * прочитанное остаётся в списке, удалённое исчезает. Ровно так разделено и в
+ * вебе (`deleteNotification` в `notifications-service.ts` сайта); до сих пор в
+ * приложении была только пометка, и убрать уведомление из списка было нечем.
+ *
+ * Уведомления общие с сайтом — лежат в `users/{uid}/notifications`, а не на
+ * устройстве. Значит удаление здесь убирает запись и из личного кабинета тоже.
+ */
+export async function remove(userId: string, notificationId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, 'notifications', notificationId))
 }

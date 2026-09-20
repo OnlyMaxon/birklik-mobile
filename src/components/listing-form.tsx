@@ -17,6 +17,7 @@ import {amenitiesList, cities, propertyTypes} from '@birklik/core/data'
 import type {Amenity, Property, PropertyType} from '@birklik/core/types'
 
 import {FormField} from '@/components/form-field'
+import {LocationPicker} from '@/components/location-picker'
 import {PickerField} from '@/components/picker-field'
 import {PrimaryButton} from '@/components/primary-button'
 import {useLanguage} from '@/i18n/language-provider'
@@ -41,6 +42,11 @@ export interface ListingFormValues {
   existingImages: string[]
   /** Только что выбранные с устройства. Загружаются при отправке. */
   newImages: PickedImage[]
+  /**
+   * Точка на карте. `null` — человек её не ставил и адрес не искал, значит
+   * координаты, как и раньше, выясняет геокодер по адресу при отправке.
+   */
+  coordinates: {lat: number; lng: number} | null
   /** Поля модератора. Заполняются только в его режиме. */
   status?: string
   listingTier?: 'standard' | 'vip' | 'premium'
@@ -104,6 +110,11 @@ export function ListingForm({
   const [area, setArea] = useState(property ? String(property.area ?? '') : '')
   const [guests, setGuests] = useState(property ? String(property.maxGuests ?? '') : '')
   const [amenities, setAmenities] = useState<Amenity[]>(property?.amenities ?? [])
+
+  // У объявления в правке точка уже есть — показываем её, а не центр Баку.
+  const [coordinates, setCoordinates] = useState<{lat: number; lng: number} | null>(
+    property?.coordinates ?? null
+  )
 
   const [existing, setExisting] = useState<string[]>(property?.images ?? [])
   const [picked, setPicked] = useState<PickedImage[]>([])
@@ -201,6 +212,7 @@ export function ListingForm({
       amenities,
       existingImages: existing,
       newImages: picked,
+      coordinates,
       ...(moderator ? {status, listingTier: tier, expiresAt} : {})
     })
   }
@@ -248,6 +260,17 @@ export function ListingForm({
 
         <FormField label={t.property.location} value={district} onChangeText={setDistrict} />
         <FormField label={t.property.address} value={address} onChangeText={setAddress} />
+
+        {/* Карта идёт сразу под адресом, как на сайте: кнопка ищет точку по
+            написанному, касание карты — наоборот, уточняет адрес по точке.
+            Стоит в общей форме, а не в подаче, поэтому есть и при правке, и у
+            модератора. */}
+        <LocationPicker
+          value={coordinates}
+          onChange={setCoordinates}
+          query={[address, district, city].filter(Boolean).join(', ')}
+          onAddressFound={setAddress}
+        />
 
         <View style={styles.row}>
           <View style={styles.cell}>

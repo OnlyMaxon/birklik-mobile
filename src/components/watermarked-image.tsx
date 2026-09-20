@@ -23,14 +23,33 @@ export const WatermarkedImage = forwardRef<View, Props>(function WatermarkedImag
   {uri, width, height},
   ref
 ) {
+  // Ровно формула сайта: `Math.min(canvasW * 0.35, 280)`.
   const logoWidth = Math.min(width * 0.35, 280)
+  // На сайте высота берётся из пропорций самого файла логотипа:
+  // `logoW * (logo.height / logo.width)`. Оба файла — 4:1 (веб 512×128,
+  // приложение 1024×256), поэтому деление на 4 даёт то же число. Заменят
+  // логотип на другой пропорции — поправить обе стороны разом.
+  const logoHeight = logoWidth / 4
 
   return (
     <View ref={ref} collapsable={false} style={[styles.frame, {width, height}]}>
       <Image source={{uri}} style={{width, height}} resizeMode="cover" />
       <Image
         source={require('@/assets/images/logo.png')}
-        style={[styles.logo, {width: logoWidth, height: logoWidth / 4}]}
+        style={[
+          styles.logo,
+          {
+            width: logoWidth,
+            height: logoHeight,
+            // ⚠️ Сдвиг вверх на ПОЛОВИНУ ВЫСОТЫ ЛОГОТИПА, а не на постоянные 20
+            // точек, как было. У сайта знак стоит ровно в середине:
+            // `y = (canvasH - logoH) / 2`. Постоянный сдвиг совпадал с этим
+            // только при ширине логотипа в 160 точек, а на полноразмерном кадре
+            // (логотип 280) знак уезжал на 15 точек ниже центра — то есть
+            // снимки из приложения и из браузера различались на глаз.
+            marginTop: -logoHeight / 2
+          }
+        ]}
         resizeMode="contain"
       />
     </View>
@@ -50,7 +69,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignSelf: 'center',
     top: '50%',
-    marginTop: -20,
+    // Сдвиг задаётся в разметке: он зависит от высоты логотипа, а она — от
+    // ширины кадра. Прозрачность та же, что у сайта: `ctx.globalAlpha = 0.20`.
     opacity: 0.2
   }
 })

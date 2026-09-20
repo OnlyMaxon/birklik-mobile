@@ -63,9 +63,11 @@ export default function ModeratorEditScreen() {
       const uploaded = values.newImages.length ? await uploadImages(values.newImages, apply) : []
       const images = [...values.existingImages, ...uploaded]
 
-      const coordinates = await geocode(
-        [values.address, values.district, values.city].filter(Boolean).join(', ')
-      )
+      // Точка, поставленная на карте, важнее найденной по адресу: человек
+      // уточнил её руками. Ничего не ставил — работает как раньше, геокодером.
+      const coordinates =
+        values.coordinates ??
+        (await geocode([values.address, values.district, values.city].filter(Boolean).join(', ')))
 
       await updateListingAsModerator(property.id, {
         title: values.title,

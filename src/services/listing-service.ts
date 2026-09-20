@@ -1,3 +1,4 @@
+import {PixelRatio} from 'react-native'
 import {addDoc, collection, doc, updateDoc} from '@react-native-firebase/firestore'
 import {getDownloadURL, ref, putFile} from '@react-native-firebase/storage'
 import * as ImageManipulator from 'expo-image-manipulator'
@@ -30,7 +31,7 @@ const IMAGE_QUALITY = 0.75
 const MAX_IMAGES = 15
 
 /** Баку — запасной вариант, если геокодер не ответил. Тот же, что на сайте. */
-const DEFAULT_COORDINATES = {lat: 40.4093, lng: 49.8671}
+export const DEFAULT_COORDINATES = {lat: 40.4093, lng: 49.8671}
 
 /**
  * Координаты по названию места — тем же геокодером, что и сайт
@@ -58,6 +59,32 @@ export async function geocode(query: string): Promise<{lat: number; lng: number}
       : DEFAULT_COORDINATES
   } catch {
     return DEFAULT_COORDINATES
+  }
+}
+
+/**
+ * Адрес по координатам — для точки, поставленной пальцем на карте.
+ *
+ * Тем же Nominatim, что и прямой поиск, и ровно для того же, для чего это
+ * делает сайт (`onAddressReverse` у `LocationMap`): человек ткнул в карту, а
+ * поле адреса осталось от прежнего места — объявление ушло бы с меткой в одном
+ * районе и подписью о другом.
+ *
+ * Пустая строка означает «не вышло». Вызывающий обязан в этом случае оставить
+ * то, что человек написал сам: затирать введённое молчаливой неудачей нельзя.
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const url =
+      'https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&' +
+      `lat=${lat}&lon=${lng}`
+    const response = await fetch(url, {headers: {'Accept-Language': 'az'}})
+    if (!response.ok) return ''
+
+    const result = (await response.json()) as {display_name?: string}
+    return typeof result?.display_name === 'string' ? result.display_name : ''
+  } catch {
+    return ''
   }
 }
 
@@ -133,22 +160,46 @@ export async function uploadImages(
     const width = Math.round(image.width * ratio)
     const height = Math.round(image.height * ratio)
 
-    // Сначала уменьшаем, потом наносим знак: на сайте порядок такой же, и от
-    // него зависит размер логотипа — он считается от ИТОГОВОЙ ширины кадра.
-    const resized =
-      ratio < 1
-        ? await ImageManipulator.manipulateAsync(image.uri, [{resize: {width, height}}], {
-            compress: 1,
-            format: ImageManipulator.SaveFormat.PNG
-          })
-        : {uri: image.uri, width: image.width, height: image.height}
+    // ⚠️ Кадр для наложения знака готовится в ФИЗИЧЕСКИХ пикселях экрана, а не
+    // в итоговом размере.
+    //
+    // Знак наносится снимком вида (`useWatermark`), а вид снимается в пикселях
+    // устройства: его размер в точках умножается на плотность экрана. Отдай мы
+    // сюда кадр уже в итоговом размере — вид растянул бы его на плотность и снял
+    // бы интерполированную размазню. Так и было: на телефоне с 420 dpi кадр
+    // 328×675 превращался в 861×1772, деталей не прибавлялось, а резкость
+    // пропадала совсем. Снимки из приложения весили 9–18 КБ против 105–213 КБ у
+    // того же сайта — в разы меньше данных на пиксель.
+    //
+    // Поэтому в вид отдаём кадр ровно той ширины, которую вид займёт в пикселях:
+    // отрисовка выходит один в один, без растягивания. Больше оригинала не
+    // просим — `Math.min(…, 1)` не даёт увеличить маленький снимок.
+    const stageRatio = Math.min(ratio * PixelRatio.get(), 1)
+    const stage =
+      stageRatio < 1
+        ? await ImageManipulator.manipulateAsync(
+            image.uri,
+            [
+              {
+                resize: {
+                  width: Math.round(image.width * stageRatio),
+                  height: Math.round(image.height * stageRatio)
+                }
+              }
+            ],
+            {compress: 1, format: ImageManipulator.SaveFormat.PNG}
+          )
+        : {uri: image.uri}
 
-    const marked = watermark
-      ? await watermark({uri: resized.uri, width: resized.width, height: resized.height})
-      : resized.uri
+    // Размер ВИДА задаётся в точках и равен итоговому кадру: от него считается
+    // логотип (35% ширины), и на сайте он считается от той же величины.
+    const marked = watermark ? await watermark({uri: stage.uri, width, height}) : stage.uri
 
-    // Кодируем один раз, в самом конце — как холст на сайте.
-    const compressed = await ImageManipulator.manipulateAsync(marked, [], {
+    // Снимок вида пришёл в пикселях устройства — приводим к итоговому размеру и
+    // кодируем один раз, как холст на сайте. Уменьшение здесь обязательно: без
+    // него размер файла зависел бы от плотности экрана того, кто подаёт
+    // объявление, и снимки из приложения перестали бы совпадать с сайтом.
+    const compressed = await ImageManipulator.manipulateAsync(marked, [{resize: {width, height}}], {
       compress: IMAGE_QUALITY,
       format: ImageManipulator.SaveFormat.WEBP
     })

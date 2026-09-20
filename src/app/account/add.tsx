@@ -91,11 +91,13 @@ export default function AddListingScreen() {
     setSaving(true)
     setError('')
     try {
-      // Координаты выясняет геокодер по адресу и городу — тот же, что на сайте.
-      // Без них объявление не попадёт ни на карту витрины, ни в «похожие».
-      const coordinates = await geocode(
-        [values.address, values.district, values.city].filter(Boolean).join(', ')
-      )
+      // Точка, поставленная на карте, важнее найденной по адресу: человек
+      // уточнил её руками. Не ставил — выясняет геокодер по адресу и городу,
+      // тот же, что на сайте. Без координат объявление не попадёт ни на карту
+      // витрины, ни в «похожие».
+      const coordinates =
+        values.coordinates ??
+        (await geocode([values.address, values.district, values.city].filter(Boolean).join(', ')))
       const urls = await uploadImages(values.newImages, apply)
 
       const chosen = plan ? planOf(plan) : null

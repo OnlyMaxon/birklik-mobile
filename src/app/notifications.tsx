@@ -4,9 +4,11 @@ import {router} from 'expo-router'
 
 import type {Notification} from '@birklik/core/types'
 
+import {Ionicons} from '@expo/vector-icons'
+
 import {useAuth} from '@/auth/auth-provider'
 import {useLanguage} from '@/i18n/language-provider'
-import {getNotifications, markAllAsRead, markAsRead} from '@/services/notifications-service'
+import {getNotifications, markAllAsRead, markAsRead, remove} from '@/services/notifications-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 export default function NotificationsScreen() {
@@ -69,6 +71,27 @@ export default function NotificationsScreen() {
     }
   }
 
+  /**
+   * Удаление — отдельное действие, не «прочитано».
+   *
+   * Без подтверждения, как и в вебе: кнопка маленькая и отдельная от карточки,
+   * промахнуться мимо неё трудно, а лишний вопрос на каждое уведомление
+   * раздражает сильнее, чем помогает.
+   *
+   * Убираем с экрана сразу, не дожидаясь сети. Не прошло — возвращаем список с
+   * сервера, чтобы на экране не осталось того, чего на самом деле нет, и
+   * наоборот.
+   */
+  const drop = async (item: Notification) => {
+    if (!user) return
+    setItems(current => current.filter(n => n.id !== item.id))
+    try {
+      await remove(user.uid, item.id)
+    } catch {
+      await load()
+    }
+  }
+
   const unread = items.filter(item => !item.read).length
 
   if (loading) {
@@ -107,6 +130,16 @@ export default function NotificationsScreen() {
             <Text style={[styles.title, !item.read && styles.titleUnread]} numberOfLines={1}>
               {item.title}
             </Text>
+            {/* Кнопка внутри нажимаемой карточки: касание по ней до карточки не
+                доходит, поэтому удаление не откроет заодно объявление. */}
+            <Pressable
+              onPress={() => drop(item)}
+              hitSlop={10}
+              accessibilityLabel={t.buttons.delete}
+              style={({pressed}) => [styles.drop, pressed && styles.dropPressed]}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.gray400} />
+            </Pressable>
           </View>
           <Text style={styles.message}>{item.message}</Text>
           <Text style={styles.date}>{item.createdAt?.slice(0, 10)}</Text>
@@ -134,6 +167,8 @@ const styles = StyleSheet.create({
   cardPressed: {opacity: 0.75},
   cardHead: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   dot: {width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent},
+  drop: {padding: 2},
+  dropPressed: {opacity: 0.5},
   title: {flex: 1, fontSize: fontSize.base, color: colors.gray700},
   titleUnread: {fontWeight: '700', color: colors.text},
   message: {fontSize: fontSize.sm, color: colors.gray600, lineHeight: 20},
