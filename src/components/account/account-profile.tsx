@@ -4,6 +4,7 @@ import {Alert, StyleSheet, Text, View} from 'react-native'
 import {validateName, validatePhoneNumber} from '@birklik/core/utils/validators'
 
 import {useAuth} from '@/auth/auth-provider'
+import {DeleteAccountSection} from '@/components/account/delete-account'
 import {FormField} from '@/components/form-field'
 import {PrimaryButton} from '@/components/primary-button'
 import {useLanguage} from '@/i18n/language-provider'
@@ -69,12 +70,21 @@ export function AccountProfile() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <PrimaryButton title={t.buttons.save} onPress={save} loading={saving} disabled={saving} />
+
+      {/* Удаление аккаунта. Google требует путь к нему изнутри приложения —
+          без этого приложение в магазин не выпустят. */}
+      <View style={styles.danger}>
+        <DeleteAccountSection />
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   wrap: {gap: spacing.base},
+  // Отделено чертой: это не часть правки профиля, а отдельное необратимое
+  // действие, и соседство с кнопкой «Сохранить» здесь было бы опасным.
+  danger: {marginTop: spacing.lg, paddingTop: spacing.base, borderTopWidth: 1, borderTopColor: colors.gray200},
   readonly: {
     backgroundColor: colors.gray50,
     borderRadius: radius.sm,

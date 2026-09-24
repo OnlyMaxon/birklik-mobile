@@ -1,4 +1,11 @@
-import {ActivityIndicator, Pressable, StyleSheet, Text} from 'react-native'
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  type StyleProp,
+  type ViewStyle
+} from 'react-native'
 
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
@@ -7,9 +14,15 @@ type Props = {
   onPress: () => void
   loading?: boolean
   disabled?: boolean
+  /**
+   * Перекрытие вида. Нужно ровно одному месту — красной кнопке удаления
+   * аккаунта: действие необратимо и не должно выглядеть как обычное «сохранить».
+   * Заводить ради этого вторую кнопку значит развести отступы и высоту.
+   */
+  style?: StyleProp<ViewStyle>
 }
 
-export function PrimaryButton({title, onPress, loading, disabled}: Props) {
+export function PrimaryButton({title, onPress, loading, disabled, style}: Props) {
   const inactive = disabled || loading
   return (
     <Pressable
@@ -17,6 +30,7 @@ export function PrimaryButton({title, onPress, loading, disabled}: Props) {
       disabled={inactive}
       style={({pressed}) => [
         styles.button,
+        style,
         inactive && styles.buttonInactive,
         pressed && !inactive && styles.buttonPressed
       ]}
