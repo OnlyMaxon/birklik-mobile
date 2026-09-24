@@ -1,10 +1,10 @@
-import {
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  getAuth
-} from '@react-native-firebase/auth'
+import {EmailAuthProvider, reauthenticateWithCredential} from '@react-native-firebase/auth'
 
-const auth = getAuth()
+// ⚠️ Берём общий `auth`, а не свой `getAuth()`. В `@/lib/firebase` вместе с ним
+// поднимается App Check, а он включён в режиме принуждения и на аутентификации:
+// свой экземпляр означал бы зависимость от порядка импортов — и отказ 401 там,
+// где модуль загрузился первым.
+import {auth} from '@/lib/firebase'
 
 const CALLABLE = 'https://europe-west1-birklik-65289.cloudfunctions.net/deleteAccount'
 
