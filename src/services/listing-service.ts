@@ -34,6 +34,32 @@ const MAX_IMAGES = 15
 export const DEFAULT_COORDINATES = {lat: 40.4093, lng: 49.8671}
 
 /**
+ * Заголовки для Nominatim.
+ *
+ * ⚠️ `User-Agent` тут обязателен, и без него геокодер в приложении НЕ РАБОТАЛ
+ * ВООБЩЕ — ни для одного запроса. Политика OSM требует опознавательной строки,
+ * а Android по умолчанию представляется `okhttp/4.x`, и на неё Nominatim
+ * отвечает `403 Access denied`. Код возвращал запасные координаты, экран писал
+ * «не нашлось», и выглядело это как будто OSM не знает ни Баку, ни Yasamal.
+ *
+ * Измерено 2026-09-25:
+ * ```
+ * okhttp/4.12.0                     403
+ * пустой User-Agent                 403
+ * Mozilla/5.0 (обобщённый)          403
+ * Birklik.az/1.0 (info@birklik.az)  200
+ * ```
+ *
+ * На сайте этой беды нет: там запрос идёт из браузера с его настоящей строкой,
+ * а подменить `User-Agent` из `fetch` браузер всё равно не даёт — заголовок
+ * запрещённый. Поэтому правка только здесь.
+ */
+const NOMINATIM_HEADERS = {
+  'User-Agent': 'Birklik.az/1.0 (info@birklik.az)',
+  'Accept-Language': 'az'
+}
+
+/**
  * Координаты по названию места — тем же геокодером, что и сайт
  * (`geocodeCity` в `use-listing-editor.ts`): OpenStreetMap Nominatim с
  * ограничением по Азербайджану.
@@ -47,7 +73,7 @@ export async function geocode(query: string): Promise<{lat: number; lng: number}
     const url =
       'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=az&q=' +
       encodeURIComponent(query)
-    const response = await fetch(url, {headers: {'Accept-Language': 'az'}})
+    const response = await fetch(url, {headers: NOMINATIM_HEADERS})
     if (!response.ok) return DEFAULT_COORDINATES
 
     const results = (await response.json()) as Array<{lat: string; lon: string}>
@@ -78,7 +104,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
     const url =
       'https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&' +
       `lat=${lat}&lon=${lng}`
-    const response = await fetch(url, {headers: {'Accept-Language': 'az'}})
+    const response = await fetch(url, {headers: NOMINATIM_HEADERS})
     if (!response.ok) return ''
 
     const result = (await response.json()) as {display_name?: string}
