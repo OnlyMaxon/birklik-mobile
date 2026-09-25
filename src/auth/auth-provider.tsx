@@ -20,6 +20,7 @@ import {
 } from '@react-native-firebase/auth'
 import {doc, getDoc, setDoc} from '@react-native-firebase/firestore'
 
+import {isPlaceholderAvatar} from '@birklik/core/utils/images'
 import {auth, db} from '@/lib/firebase'
 import {removePushToken} from '@/services/push-service'
 
@@ -70,12 +71,6 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
-
-function avatarFor(name: string): string {
-  // Тот же способ, что на сайте, чтобы аватар совпадал у одного человека
-  // в приложении и в браузере.
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1a365d&color=fff`
-}
 
 export function AuthProvider({children}: {children: ReactNode}) {
   const [user, setUser] = useState<User | null>(null)
@@ -148,7 +143,12 @@ export function AuthProvider({children}: {children: ReactNode}) {
           name: (data.name as string) || current.displayName || '',
           email: current.email ?? '',
           phone: (data.phone as string) || '',
-          avatar: data.avatar as string | undefined
+          // ⚠️ Заглушка с ui-avatars.com считается ОТСУТСТВИЕМ аватара: в её
+          // адресе ехало настоящее имя человека на чужой сервер. У всех, кто
+          // зарегистрировался раньше, такой адрес остался в базе.
+          avatar: isPlaceholderAvatar(data.avatar as string | undefined)
+            ? undefined
+            : (data.avatar as string | undefined)
         })
       } catch {
         // Документа может не быть, если регистрация оборвалась между созданием
@@ -196,7 +196,8 @@ export function AuthProvider({children}: {children: ReactNode}) {
           // Firebase к каноническому виду.
           email: credential.user.email ?? '',
           phone: phone.trim(),
-          avatar: avatarFor(displayName),
+          // Пусто — значит аватара нет, инициалы рисует сам экран.
+          avatar: '',
           createdAt: new Date().toISOString()
         })
       },
