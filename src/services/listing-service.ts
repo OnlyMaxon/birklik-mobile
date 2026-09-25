@@ -4,6 +4,7 @@ import {getDownloadURL, ref, putFile} from '@react-native-firebase/storage'
 import * as ImageManipulator from 'expo-image-manipulator'
 
 import type {Amenity, Property, PropertyType} from '@birklik/core/types'
+import {resolveCityQuery} from '@birklik/core/data'
 
 import {auth, db, storage} from '@/lib/firebase'
 
@@ -70,9 +71,14 @@ const NOMINATIM_HEADERS = {
  */
 export async function geocode(query: string): Promise<{lat: number; lng: number}> {
   try {
+    // ⚠️ Запрос приводится к официальному написанию, и это НЕ мелочь. Сайт так
+    // делал с самого начала, приложение — нет, и разницу видно на ответах
+    // геокодера: на «Gebele» он отдаёт улицу «Qədim Qəbələ» в Xətai районе
+    // БАКУ, а не город Qəbələ. Ответ успешный и правдоподобный, поймать нечем —
+    // объявление молча получало метку в другом городе.
     const url =
       'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=az&q=' +
-      encodeURIComponent(query)
+      encodeURIComponent(resolveCityQuery(query))
     const response = await fetch(url, {headers: NOMINATIM_HEADERS})
     if (!response.ok) return DEFAULT_COORDINATES
 
