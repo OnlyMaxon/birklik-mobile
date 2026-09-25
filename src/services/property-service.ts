@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   documentId,
   getDoc,
@@ -10,11 +11,13 @@ import {
   where,
   type QueryConstraint
 } from '@react-native-firebase/firestore'
+import {deleteObject, ref} from '@react-native-firebase/storage'
 
 import type {Property} from '@birklik/core/types'
 import {isOnDisplay} from '@birklik/core/utils/display'
+import {storagePathFromImageSource} from '@birklik/core/utils/images'
 
-import {db} from '@/lib/firebase'
+import {db, storage} from '@/lib/firebase'
 import {withImageUrls} from '@/lib/images'
 
 /**
@@ -158,3 +161,69 @@ export async function getProperty(id: string): Promise<Property | null> {
   return isOnDisplay(property) ? property : null
 }
 
+
+/**
+ * Удаление СВОЕГО объявления владельцем — вместе с фотографиями, бронями и
+ * запросами на их отмену.
+ *
+ * ⚠️ Не путать с `deleteProperty` в `moderation-service.ts`. Разные они не по
+ * недосмотру: у владельца и модератора **разные права**, и один и тот же код
+ * для обоих уже ломался на сайте.
+ *
+ * Главное отличие — поиск запросов отмены. Firestore проверяет правила по
+ * УСЛОВИЯМ запроса, а не по найденным документам: ветка владельца смотрит в
+ * `ownerId`, значит и запрос обязан быть ограничен по `ownerId`. Поиск по
+ * одному `bookingId` модератору разрешён, а владельцу — НЕТ, запрос
+ * отклоняется целиком. Закреплено тестом «ЗАПРЕЩЕНО владельцу искать по одному
+ * bookingId» в `tests/rules/cancellation-requests.test.ts` веб-репозитория.
+ *
+ * Берём свои запросы ОДНОЙ выборкой по `ownerId` на всё объявление и
+ * раскладываем по броням — и правилам годится, и обращений меньше.
+ *
+ * ⚠️ Порядок менять нельзя: снимки → брони → документ объявления. Правило
+ * удаления брони читает документ объявления через `get()`, чтобы узнать
+ * владельца; снеси мы объявление первым, `get()` вернёт пустоту, и владелец
+ * потеряет право на собственные брони.
+ */
+export async function deleteOwnProperty(propertyId: string, ownerId: string): Promise<void> {
+  try {
+    const snapshot = await getDoc(doc(db, 'properties', propertyId))
+    const images = (snapshot.data() as Property | undefined)?.images ?? []
+
+    for (const url of images) {
+      const path = storagePathFromImageSource(url)
+      if (!path) continue
+      try {
+        await deleteObject(ref(storage, path))
+      } catch {
+        // Файла уже нет либо он загружен не этим человеком — правила Storage
+        // держат `request.auth.uid == userId` прямо в пути. Объявление убрать
+        // надо в любом случае; остатки подберёт еженедельная чистка сирот.
+      }
+    }
+  } catch {
+    // Не прочитали документ — значит и снимков не знаем. Удаление самого
+    // объявления это отменять не должно.
+  }
+
+  try {
+    const bookings = await getDocs(
+      query(collection(db, 'bookings'), where('propertyId', '==', propertyId))
+    )
+    const own = await getDocs(
+      query(collection(db, 'cancellationRequests'), where('ownerId', '==', ownerId))
+    )
+
+    for (const booking of bookings.docs) {
+      for (const request of own.docs) {
+        if (request.data().bookingId === booking.id) await deleteDoc(request.ref)
+      }
+      await deleteDoc(booking.ref)
+    }
+  } catch {
+    // Уборка не отменяет главного действия: на сайте ровно на этом удаление
+    // падало целиком и объявление оставалось на месте.
+  }
+
+  await deleteDoc(doc(db, 'properties', propertyId))
+}

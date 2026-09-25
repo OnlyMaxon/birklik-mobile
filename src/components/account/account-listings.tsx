@@ -1,4 +1,5 @@
-import {Platform, Pressable, StyleSheet, Text, View} from 'react-native'
+import {useState} from 'react'
+import {ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
 import {Link, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -6,11 +7,15 @@ import type {Property} from '@birklik/core/types'
 import {isOnDisplay} from '@birklik/core/utils/display'
 import {isTierActive, tierExpiresAt, tierRemainingDays} from '@birklik/core/utils/premium-helper'
 
+import {useAuth} from '@/auth/auth-provider'
 import {useLanguage} from '@/i18n/language-provider'
+import {deleteOwnProperty} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 type Props = {
   listings: Property[]
+  /** Объявление удалено — экрану нужно перечитать список. */
+  onDeleted: () => void
 }
 
 /**
@@ -18,7 +23,7 @@ type Props = {
  * модерации и черновики. Ровно за этим владелец в кабинет и приходит: понять,
  * куда делось объявление, и продлить.
  */
-export function AccountListings({listings}: Props) {
+export function AccountListings({listings, onDeleted}: Props) {
   const {t} = useLanguage()
 
   if (listings.length === 0) {
@@ -28,14 +33,51 @@ export function AccountListings({listings}: Props) {
   return (
     <View style={styles.list}>
       {listings.map(property => (
-        <OwnerListing key={property.id} property={property} />
+        <OwnerListing key={property.id} property={property} onDeleted={onDeleted} />
       ))}
     </View>
   )
 }
 
-function OwnerListing({property}: {property: Property}) {
+function OwnerListing({property, onDeleted}: {property: Property; onDeleted: () => void}) {
   const {language, t} = useLanguage()
+  const {user} = useAuth()
+  const [deleting, setDeleting] = useState(false)
+
+  const remove = async () => {
+    if (!user) return
+    setDeleting(true)
+    try {
+      await deleteOwnProperty(property.id, user.uid)
+      onDeleted()
+    } catch {
+      setDeleting(false)
+      Alert.alert(t.messages.error)
+    }
+  }
+
+  // Подтверждение обязательно: объявление уходит вместе с фотографиями и
+  // бронями, вернуть его нечем. Кнопка стоит в одном ряду с правкой, и
+  // промахнуться по ней легко.
+  // Текст тот же, что в кабинете на сайте, и так же задан на месте: в общем
+  // каталоге этих строк нет, а ради двух предложений гонять подмодуль незачем.
+  const confirmRemove = () =>
+    Alert.alert(
+      language === 'en'
+        ? 'Delete this listing?'
+        : language === 'ru'
+          ? 'Удалить объявление?'
+          : 'Elanı silmək istəyirsiniz?',
+      language === 'en'
+        ? 'This cannot be undone. Photos and bookings will be deleted too.'
+        : language === 'ru'
+          ? 'Отменить это будет нельзя. Фотографии и брони удалятся вместе с ним.'
+          : 'Bunu geri qaytarmaq olmayacaq. Şəkillər və bronlaşdırmalar da silinəcək.',
+      [
+        {text: t.buttons.cancel, style: 'cancel'},
+        {text: t.buttons.delete, style: 'destructive', onPress: remove}
+      ]
+    )
 
   const onDisplay = isOnDisplay(property)
   const premium = isTierActive(property, 'premium')
@@ -113,6 +155,18 @@ function OwnerListing({property}: {property: Property}) {
               <Text style={styles.actionText}>{t.promote.title}</Text>
             </Pressable>
           ) : null}
+
+          {/* Удаление своего объявления. На сайте владельцу это доступно с
+              самого начала, в приложении не было вовсе — удалить мог только
+              модератор. */}
+          <Pressable style={styles.action} onPress={confirmRemove} hitSlop={6} disabled={deleting}>
+            {deleting ? (
+              <ActivityIndicator size="small" color={colors.error} />
+            ) : (
+              <Ionicons name="trash-outline" size={15} color={colors.error} />
+            )}
+            <Text style={[styles.actionText, styles.actionDanger]}>{t.buttons.delete}</Text>
+          </Pressable>
         </View>
       </Pressable>
     </Link>
@@ -147,5 +201,6 @@ const styles = StyleSheet.create({
   expiry: {fontSize: fontSize.xs, color: colors.gray500},
   actions: {flexDirection: 'row', gap: spacing.base, paddingTop: spacing.xs},
   action: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  actionDanger: {color: colors.error},
   actionText: {fontSize: fontSize.sm, color: colors.primary, fontWeight: '600'}
 })

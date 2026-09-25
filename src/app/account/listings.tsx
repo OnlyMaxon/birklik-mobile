@@ -53,7 +53,9 @@ export default function ListingsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
-          <AccountListings listings={listings} />
+          {/* Удалённое объявление исчезает не само: список держится в
+              состоянии экрана, и после удаления его надо перечитать. */}
+          <AccountListings listings={listings} onDeleted={load} />
         </ScrollView>
       )}
     </>
