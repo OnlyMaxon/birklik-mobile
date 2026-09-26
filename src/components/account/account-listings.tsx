@@ -199,7 +199,19 @@ const styles = StyleSheet.create({
   statusTextOff: {color: colors.gray500},
   price: {fontSize: fontSize.base, fontWeight: '700', color: colors.primary},
   expiry: {fontSize: fontSize.xs, color: colors.gray500},
-  actions: {flexDirection: 'row', gap: spacing.base, paddingTop: spacing.xs},
+  // ⚠️ flexWrap обязателен. Без него три действия выстраивались в одну строку
+  // без переноса, и «Удалить» уезжало за правый край экрана — на телефоне от
+  // него было видно две буквы, нажать нельзя. Заметно только на длинных
+  // подписях: по-русски «Продвинуть объявление» съедает всю ширину, а
+  // по-азербайджански и по-английски строка ещё помещалась. Найдено на
+  // устройстве 2026-09-26.
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: spacing.base,
+    rowGap: spacing.sm,
+    paddingTop: spacing.xs
+  },
   action: {flexDirection: 'row', alignItems: 'center', gap: 4},
   actionDanger: {color: colors.error},
   actionText: {fontSize: fontSize.sm, color: colors.primary, fontWeight: '600'}

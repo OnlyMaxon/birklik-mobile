@@ -1,10 +1,12 @@
-import {forwardRef} from 'react'
+import {forwardRef, useCallback, useRef} from 'react'
 import {Image, StyleSheet, View} from 'react-native'
 
 type Props = {
   uri: string
   width: number
   height: number
+  /** Обе картинки отрисованы — вид можно снимать. */
+  onReady?: () => void
 }
 
 /**
@@ -20,9 +22,19 @@ type Props = {
  * наложить одну картинку на другую он не может.
  */
 export const WatermarkedImage = forwardRef<View, Props>(function WatermarkedImage(
-  {uri, width, height},
+  {uri, width, height, onReady},
   ref
 ) {
+  // ⚠️ Снимать вид можно только когда отрисованы ОБЕ картинки. Раньше снятие
+  // шло по таймеру на 120 мс — и ловило кадр, где картинка ещё не проявилась, а
+  // под ней чёрный фон. Отсюда были чёрные фотографии в объявлениях, причём
+  // каждая следующая темнее предыдущей: телефон занят обработкой предыдущей, и
+  // к 120-й миллисекунде успевает всё меньше.
+  const loaded = useRef(0)
+  const markLoaded = useCallback(() => {
+    loaded.current += 1
+    if (loaded.current === 2) onReady?.()
+  }, [onReady])
   // Ровно формула сайта: `Math.min(canvasW * 0.35, 280)`.
   const logoWidth = Math.min(width * 0.35, 280)
   // На сайте высота берётся из пропорций самого файла логотипа:
@@ -33,7 +45,17 @@ export const WatermarkedImage = forwardRef<View, Props>(function WatermarkedImag
 
   return (
     <View ref={ref} collapsable={false} style={[styles.frame, {width, height}]}>
-      <Image source={{uri}} style={{width, height}} resizeMode="cover" />
+      {/* ⚠️ fadeDuration={0} обязателен. На Android у Image есть плавное
+          проявление длиной 300 мс по умолчанию, и снимок вида ловил картинку
+          полупрозрачной — поверх чёрного фона рамки. Ровно это и делало
+          фотографии тёмными. */}
+      <Image
+        source={{uri}}
+        style={{width, height}}
+        resizeMode="cover"
+        fadeDuration={0}
+        onLoad={markLoaded}
+      />
       <Image
         source={require('@/assets/images/logo.png')}
         style={[
@@ -51,6 +73,8 @@ export const WatermarkedImage = forwardRef<View, Props>(function WatermarkedImag
           }
         ]}
         resizeMode="contain"
+        fadeDuration={0}
+        onLoad={markLoaded}
       />
     </View>
   )
