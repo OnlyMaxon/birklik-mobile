@@ -1,14 +1,17 @@
-import {useMemo} from 'react'
+import {useMemo, useRef} from 'react'
 import {Linking, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
 import {
   Camera,
   Map as MapLibreMap,
+  type CameraRef,
+  type MapRef,
   Marker,
   type StyleSpecification
 } from '@maplibre/maplibre-react-native'
 
 import {basemap} from '@birklik/core/utils/basemap'
 
+import {MapZoomControls} from '@/components/map-zoom-controls'
 import {useLanguage} from '@/i18n/language-provider'
 import {colors, fontSize, radius, spacing} from '@/theme/theme'
 
@@ -35,6 +38,9 @@ type Props = {
  * MapLibre такого не умеет и отправил бы фигурные скобки прямо в адрес.
  */
 export function PropertyMap({latitude, longitude, label}: Props) {
+  const mapRef = useRef<MapRef>(null)
+  const cameraRef = useRef<CameraRef>(null)
+
   const {t} = useLanguage()
 
   const {style, attribution} = useMemo(() => {
@@ -66,12 +72,16 @@ export function PropertyMap({latitude, longitude, label}: Props) {
 
   return (
     <View style={styles.wrap}>
-      <MapLibreMap style={styles.map} mapStyle={style} attribution={false} logo={false}>
-        <Camera initialViewState={{center: [longitude, latitude], zoom: 14}} />
-        <Marker lngLat={[longitude, latitude]}>
-          <View style={styles.pin} />
-        </Marker>
-      </MapLibreMap>
+      <View style={styles.mapBox}>
+        <MapLibreMap ref={mapRef} style={styles.map} mapStyle={style} attribution={false} logo={false}>
+          <Camera ref={cameraRef} initialViewState={{center: [longitude, latitude], zoom: 14}} />
+          <Marker lngLat={[longitude, latitude]}>
+            <View style={styles.pin} />
+          </Marker>
+        </MapLibreMap>
+
+        <MapZoomControls mapRef={mapRef} cameraRef={cameraRef} />
+      </View>
 
       {/* Подпись обязательна по условиям и OpenStreetMap, и CARTO. Рисуем свою:
           встроенную отключили, чтобы она не спорила с оформлением. */}
@@ -86,6 +96,11 @@ export function PropertyMap({latitude, longitude, label}: Props) {
 
 const styles = StyleSheet.create({
   wrap: {gap: spacing.sm},
+  // ⚠️ Обёртка нужна для кнопок масштаба: они позиционируются от неё.
+  // Внутрь самой карты их класть нельзя — MapLibre считает своих детей
+  // слоями и метками, а обычный вид там ведёт себя непредсказуемо.
+  mapBox: {position: 'relative'},
+
   map: {
     height: 220,
     borderRadius: radius.base,

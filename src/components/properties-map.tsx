@@ -1,9 +1,11 @@
-import {useMemo} from 'react'
+import {useMemo, useRef} from 'react'
 import {StyleSheet, Text, View} from 'react-native'
 import {router} from 'expo-router'
 import {
   Camera,
   Map as MapLibreMap,
+  type CameraRef,
+  type MapRef,
   Marker,
   type StyleSpecification
 } from '@maplibre/maplibre-react-native'
@@ -11,6 +13,7 @@ import {
 import {basemap} from '@birklik/core/utils/basemap'
 import type {Property} from '@birklik/core/types'
 
+import {MapZoomControls} from '@/components/map-zoom-controls'
 import {colors, radius, spacing} from '@/theme/theme'
 
 type Props = {
@@ -35,6 +38,9 @@ const BAKU_ZOOM = 8.5
  * а результат тот же.
  */
 export function PropertiesMap({properties}: Props) {
+  const mapRef = useRef<MapRef>(null)
+  const cameraRef = useRef<CameraRef>(null)
+
   const style = useMemo<StyleSpecification>(() => {
     const tiles = basemap(process.env.EXPO_PUBLIC_CARTO_API_KEY, false)
     return {
@@ -91,33 +97,38 @@ export function PropertiesMap({properties}: Props) {
 
   return (
     <View style={styles.wrap}>
-      <MapLibreMap style={styles.map} mapStyle={style} attribution={false} logo={false}>
-        {/* Ключ пересоздаёт камеру при смене выдачи: иначе после фильтра метки
-            меняются, а вид остаётся от прошлого набора. */}
-        <Camera
-          key={`${view.center[0]},${view.center[1]},${view.zoom}`}
-          initialViewState={{center: view.center, zoom: view.zoom}}
-        />
+      <View style={styles.mapBox}>
+        <MapLibreMap ref={mapRef} style={styles.map} mapStyle={style} attribution={false} logo={false}>
+          {/* Ключ пересоздаёт камеру при смене выдачи: иначе после фильтра метки
+              меняются, а вид остаётся от прошлого набора. */}
+          <Camera
+            ref={cameraRef}
+            key={`${view.center[0]},${view.center[1]},${view.zoom}`}
+            initialViewState={{center: view.center, zoom: view.zoom}}
+          />
 
-        {points.map(property => (
-          // ⚠️ Нажатие вешается на саму метку, а не на `Pressable` внутри.
-          // Метка на Android — нативный вид поверх карты, и вложенные в неё
-          // элементы касаний не получают: первая попытка через `Pressable`
-          // молча ничего не делала, а нажатие уходило в карту.
-          <Marker
-            key={property.id}
-            lngLat={[property.coordinates.lng, property.coordinates.lat]}
-            onPress={() => router.push(`/property/${property.id}`)}
-          >
-            <View style={styles.pin}>
-              {/* На метке цена за ночь — по ней объявления и сравнивают.
-                  Валюту не пишем: на метке в полсотни точек ей нет места, а в
-                  базе она у всех одна. */}
-              <Text style={styles.pinText}>{property.price?.daily ?? ''}</Text>
+          {points.map(property => (
+            // ⚠️ Нажатие вешается на саму метку, а не на `Pressable` внутри.
+            // Метка на Android — нативный вид поверх карты, и вложенные в неё
+            // элементы касаний не получают: первая попытка через `Pressable`
+            // молча ничего не делала, а нажатие уходило в карту.
+            <Marker
+              key={property.id}
+              lngLat={[property.coordinates.lng, property.coordinates.lat]}
+              onPress={() => router.push(`/property/${property.id}`)}
+            >
+              <View style={styles.pin}>
+                {/* На метке цена за ночь — по ней объявления и сравнивают.
+                    Валюту не пишем: на метке в полсотни точек ей нет места, а в
+                    базе она у всех одна. */}
+                <Text style={styles.pinText}>{property.price?.daily ?? ''}</Text>
             </View>
           </Marker>
         ))}
       </MapLibreMap>
+
+      <MapZoomControls mapRef={mapRef} cameraRef={cameraRef} />
+      </View>
 
       {/* Подпись обязательна по условиям OpenStreetMap и CARTO. */}
       <Text style={styles.attribution}>{attribution}</Text>
@@ -127,6 +138,11 @@ export function PropertiesMap({properties}: Props) {
 
 const styles = StyleSheet.create({
   wrap: {gap: spacing.xs},
+  // ⚠️ Обёртка нужна для кнопок масштаба: они позиционируются от неё.
+  // Внутрь самой карты их класть нельзя — MapLibre считает своих детей
+  // слоями и метками, а обычный вид там ведёт себя непредсказуемо.
+  mapBox: {position: 'relative'},
+
   map: {
     height: 320,
     borderRadius: radius.base,

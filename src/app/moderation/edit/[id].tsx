@@ -67,7 +67,7 @@ export default function ModeratorEditScreen() {
       // уточнил её руками. Ничего не ставил — работает как раньше, геокодером.
       const coordinates =
         values.coordinates ??
-        (await geocode([values.address, values.district, values.city].filter(Boolean).join(', ')))
+        (await geocode([values.address, values.city].filter(Boolean).join(', ')))
 
       await updateListingAsModerator(property.id, {
         title: values.title,

@@ -57,7 +57,7 @@ export default function EditListingScreen() {
       // уточнил её руками. Ничего не ставил — работает как раньше, геокодером.
       const coordinates =
         values.coordinates ??
-        (await geocode([values.address, values.district, values.city].filter(Boolean).join(', ')))
+        (await geocode([values.address, values.city].filter(Boolean).join(', ')))
 
       await updateListing(property.id, {
         title: values.title,

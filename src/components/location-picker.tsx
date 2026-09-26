@@ -1,7 +1,9 @@
-import {useMemo, useState} from 'react'
+import {useMemo, useRef, useState} from 'react'
 import {ActivityIndicator, Pressable, StyleSheet, Text, View} from 'react-native'
 import {
   Camera,
+  type CameraRef,
+  type MapRef,
   Map as MapLibreMap,
   Marker,
   type StyleSpecification
@@ -9,6 +11,7 @@ import {
 
 import {basemap} from '@birklik/core/utils/basemap'
 
+import {MapZoomControls} from '@/components/map-zoom-controls'
 import {useLanguage} from '@/i18n/language-provider'
 import {DEFAULT_COORDINATES, geocode, reverseGeocode} from '@/services/listing-service'
 import {colors, fontSize, radius, spacing} from '@/theme/theme'
@@ -46,6 +49,9 @@ type Props = {
  */
 export function LocationPicker({value, onChange, query, onAddressFound}: Props) {
   const {t} = useLanguage()
+
+  const mapRef = useRef<MapRef>(null)
+  const cameraRef = useRef<CameraRef>(null)
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -122,27 +128,33 @@ export function LocationPicker({value, onChange, query, onAddressFound}: Props) 
         </Pressable>
       </View>
 
-      <MapLibreMap
-        style={styles.map}
-        mapStyle={style}
-        attribution={false}
-        logo={false}
-        onPress={event => {
-          const lngLat = event.nativeEvent?.lngLat
-          if (!lngLat) return
-          void place(lngLat[0], lngLat[1])
-        }}
-      >
-        <Camera
-          initialViewState={{center: [start.lng, start.lat], zoom: 14}}
-          {...(focus ? {center: focus, zoom: 15} : {})}
-        />
-        {value ? (
-          <Marker lngLat={[value.lng, value.lat]}>
-            <View style={styles.pin} />
-          </Marker>
-        ) : null}
-      </MapLibreMap>
+      <View style={styles.mapBox}>
+        <MapLibreMap
+          ref={mapRef}
+          style={styles.map}
+          mapStyle={style}
+          attribution={false}
+          logo={false}
+          onPress={event => {
+            const lngLat = event.nativeEvent?.lngLat
+            if (!lngLat) return
+            void place(lngLat[0], lngLat[1])
+          }}
+        >
+          <Camera
+            ref={cameraRef}
+            initialViewState={{center: [start.lng, start.lat], zoom: 14}}
+            {...(focus ? {center: focus, zoom: 15} : {})}
+          />
+          {value ? (
+            <Marker lngLat={[value.lng, value.lat]}>
+              <View style={styles.pin} />
+            </Marker>
+          ) : null}
+        </MapLibreMap>
+
+        <MapZoomControls mapRef={mapRef} cameraRef={cameraRef} />
+      </View>
 
       {/* Подпись обязательна по условиям OpenStreetMap и CARTO — как у
           `PropertyMap`, встроенная отключена ради оформления. */}
@@ -155,6 +167,10 @@ export function LocationPicker({value, onChange, query, onAddressFound}: Props) 
 
 const styles = StyleSheet.create({
   wrap: {gap: spacing.xs},
+  // ⚠️ Обёртка нужна для кнопок масштаба: они позиционируются от неё. Внутрь
+  // самой карты их класть нельзя — MapLibre считает своих детей слоями и
+  // метками, а обычный вид там ведёт себя непредсказуемо.
+  mapBox: {position: 'relative'},
   head: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   label: {fontSize: fontSize.sm, color: colors.gray600, fontWeight: '600'},
   search: {

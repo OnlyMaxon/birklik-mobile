@@ -97,7 +97,7 @@ export default function AddListingScreen() {
       // витрины, ни в «похожие».
       const coordinates =
         values.coordinates ??
-        (await geocode([values.address, values.district, values.city].filter(Boolean).join(', ')))
+        (await geocode([values.address, values.city].filter(Boolean).join(', ')))
       const urls = await uploadImages(values.newImages, apply)
 
       const chosen = plan ? planOf(plan) : null
