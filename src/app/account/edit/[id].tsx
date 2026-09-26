@@ -69,7 +69,10 @@ export default function EditListingScreen() {
         price: values.price,
         rooms: values.rooms,
         area: values.area,
+        minGuests: values.minGuests,
         maxGuests: values.maxGuests,
+        locationTags: values.locationTags,
+        locationCategory: values.locationCategory,
         amenities: values.amenities,
         coordinates,
         images

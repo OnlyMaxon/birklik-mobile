@@ -14,8 +14,9 @@ import * as ImagePicker from 'expo-image-picker'
 import {Ionicons} from '@expo/vector-icons'
 
 import {amenitiesList, cities, propertyTypes} from '@birklik/core/data'
-import type {Amenity, Property, PropertyType} from '@birklik/core/types'
+import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
 
+import {CityLocationPicker} from '@/components/city-location-picker'
 import {FormField} from '@/components/form-field'
 import {LocationPicker} from '@/components/location-picker'
 import {PickerField} from '@/components/picker-field'
@@ -36,7 +37,11 @@ export interface ListingFormValues {
   price: number
   rooms: number
   area: number
+  minGuests: number
   maxGuests: number
+  /** Метки места внутри города. По ним отбирает фильтр — см. CityLocationPicker. */
+  locationTags: string[]
+  locationCategory: LocationCategory
   amenities: Amenity[]
   /** Уже загруженные снимки — их адреса. Порядок значим: первый идёт на карточку. */
   existingImages: string[]
@@ -103,11 +108,15 @@ export function ListingForm({
   const [description, setDescription] = useState(property?.description?.az ?? '')
   const [type, setType] = useState<PropertyType | ''>(property?.type ?? '')
   const [city, setCity] = useState(property?.city ?? '')
-  const [district, setDistrict] = useState(property?.district ?? '')
+  const [locationTags, setLocationTags] = useState<string[]>(property?.locationTags ?? [])
+  const [locationCategory, setLocationCategory] = useState<LocationCategory>(
+    property?.locationCategory ?? 'rayon'
+  )
   const [address, setAddress] = useState(property?.address?.az ?? '')
   const [price, setPrice] = useState(property ? String(property.price?.daily ?? '') : '')
   const [rooms, setRooms] = useState(property ? String(property.rooms ?? '') : '')
   const [area, setArea] = useState(property ? String(property.area ?? '') : '')
+  const [minGuests, setMinGuests] = useState(property ? String(property.minGuests ?? '') : '')
   const [guests, setGuests] = useState(property ? String(property.maxGuests ?? '') : '')
   const [amenities, setAmenities] = useState<Amenity[]>(property?.amenities ?? [])
 
@@ -128,6 +137,15 @@ export function ListingForm({
   )
 
   const [localError, setLocalError] = useState('')
+
+  // ⚠️ `district` больше не вводится руками: он получается из ПЕРВОЙ метки
+  // места, ровно как на сайте. Если меток нет — остаётся прежнее значение
+  // объявления: у записей, заведённых до выбора места, там лежит свободный
+  // текст, и затирать его при правке нельзя.
+  //
+  // Сайт в этом месте подставляет константу `'baku'`, никак не связанную с
+  // объявлением. Здесь так не делаем — пустое честнее неверного.
+  const district = locationTags[0] ?? property?.district ?? ''
 
   const total = existing.length + picked.length
 
@@ -179,6 +197,18 @@ export function ListingForm({
     setStatus('active')
   }
 
+  // Границы вместимости подтягиваются друг за другом, а не ругаются. Ровно так
+  // ведёт себя сайт: поставил минимум выше максимума — максимум поднялся следом.
+  // Ошибкой это делать незачем, человек и так видит оба поля рядом.
+  const changeMinGuests = (value: string) => {
+    setMinGuests(value)
+    if (Number(value) > Number(guests || 0)) setGuests(value)
+  }
+  const changeMaxGuests = (value: string) => {
+    setGuests(value)
+    if (Number(value) < Number(minGuests || 0)) setMinGuests(value)
+  }
+
   /** Перестановка соседей. Первый снимок идёт на карточку, поэтому порядок важен. */
   const swap = <T,>(list: T[], from: number, to: number): T[] => {
     if (to < 0 || to >= list.length) return list
@@ -196,6 +226,7 @@ export function ListingForm({
     if (!Number(price) || !Number(rooms) || !Number(area) || !Number(guests)) {
       return setLocalError(t.listing.required)
     }
+    if (!Number(minGuests)) return setLocalError(t.listing.required)
     if (total === 0) return setLocalError(t.listing.minPhotos)
 
     onSubmit({
@@ -203,12 +234,15 @@ export function ListingForm({
       description: description.trim(),
       type,
       city,
-      district: district.trim(),
+      district,
       address: address.trim(),
       price: Number(price),
       rooms: Number(rooms),
       area: Number(area),
+      minGuests: Number(minGuests),
       maxGuests: Number(guests),
+      locationTags,
+      locationCategory,
       amenities,
       existingImages: existing,
       newImages: picked,
@@ -258,7 +292,18 @@ export function ListingForm({
           onChange={setCity}
         />
 
-        <FormField label={t.property.location} value={district} onChangeText={setDistrict} />
+        {/* ⚠️ Здесь было поле свободного текста, и `locationTags` не писались
+            вовсе — из-за этого объявления с телефона не попадали в отбор по
+            району на сайте. Разбор — в city-location-picker.tsx. */}
+        <CityLocationPicker
+          city={city}
+          locationTags={locationTags}
+          onChange={(tags, category) => {
+            setLocationTags(tags)
+            setLocationCategory(category)
+          }}
+        />
+
         <FormField label={t.property.address} value={address} onChangeText={setAddress} />
 
         {/* Карта идёт сразу под адресом, как на сайте: кнопка ищет точку по
@@ -291,20 +336,30 @@ export function ListingForm({
           </View>
         </View>
 
+        <FormField
+          label={`${t.property.area}, ${t.property.sqm}`}
+          value={area}
+          onChangeText={setArea}
+          keyboardType="numeric"
+        />
+
+        {/* Нижняя и верхняя границы вместимости стоят парой: они осмысленны
+            только вместе, и на сайте они тоже рядом. Раньше спрашивалась одна
+            верхняя, а нижняя жёстко ставилась единицей. */}
         <View style={styles.row}>
           <View style={styles.cell}>
             <FormField
-              label={`${t.property.area}, ${t.property.sqm}`}
-              value={area}
-              onChangeText={setArea}
+              label={t.form.minGuests}
+              value={minGuests}
+              onChangeText={changeMinGuests}
               keyboardType="numeric"
             />
           </View>
           <View style={styles.cell}>
             <FormField
-              label={t.search.guests}
+              label={t.form.maxGuests}
               value={guests}
-              onChangeText={setGuests}
+              onChangeText={changeMaxGuests}
               keyboardType="numeric"
             />
           </View>

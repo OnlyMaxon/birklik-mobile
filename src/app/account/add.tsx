@@ -112,10 +112,12 @@ export default function AddListingScreen() {
         price: values.price,
         rooms: values.rooms,
         area: values.area,
-        // Нижнюю границу вместимости не спрашиваем: на сайте её почти не
-        // заполняют, а фильтр сравнивает диапазоны — единица безопасна.
-        minGuests: 1,
+        // Обе границы вместимости спрашивает форма — как на сайте. Раньше
+        // нижняя жёстко ставилась единицей: поля для неё не было.
+        minGuests: values.minGuests,
         maxGuests: values.maxGuests,
+        locationTags: values.locationTags,
+        locationCategory: values.locationCategory,
         amenities: values.amenities,
         coordinates,
         images: urls,

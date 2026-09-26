@@ -3,7 +3,7 @@ import {addDoc, collection, doc, updateDoc} from '@react-native-firebase/firesto
 import {getDownloadURL, ref, putFile} from '@react-native-firebase/storage'
 import * as ImageManipulator from 'expo-image-manipulator'
 
-import type {Amenity, Property, PropertyType} from '@birklik/core/types'
+import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
 import {resolveCityQuery} from '@birklik/core/data'
 
 import {auth, db, storage} from '@/lib/firebase'
@@ -132,6 +132,9 @@ export interface NewListing {
   area: number
   minGuests: number
   maxGuests: number
+  /** Метки места внутри города. По ним отбирает фильтр сайта. */
+  locationTags: string[]
+  locationCategory: LocationCategory
   amenities: Amenity[]
   coordinates: {lat: number; lng: number}
   images: string[]
@@ -275,11 +278,15 @@ export async function createListing(listing: NewListing): Promise<string> {
     price: {daily: listing.price, weekly: listing.price * 7, monthly: listing.price * 30, currency: 'AZN'},
     rooms: listing.rooms,
     area: listing.area,
-    // Нижняя граница вместимости — единица: на сайте это поле есть, но владельцы
-    // его почти не заполняют, а фильтр сравнивает ДИАПАЗОНЫ, и пустая нижняя
-    // граница выбрасывала бы объявление из выдачи по числу гостей.
+    // Обе границы вместимости спрашиваются в форме, как на сайте. Раньше
+    // нижняя жёстко ставилась единицей — форма её не спрашивала вовсе.
     minGuests: listing.minGuests,
     maxGuests: listing.maxGuests,
+    // ⚠️ Без этих двух полей объявление не попадает в отбор по району на
+    // сайте: фильтр смотрит именно `locationTags`. Приложение их не писало
+    // вовсе — см. CityLocationPicker.
+    locationTags: listing.locationTags,
+    locationCategory: listing.locationCategory,
     amenities: listing.amenities,
     coordinates: listing.coordinates,
     images: listing.images,
@@ -327,7 +334,10 @@ export interface ListingEdit {
   price: number
   rooms: number
   area: number
+  minGuests: number
   maxGuests: number
+  locationTags: string[]
+  locationCategory: LocationCategory
   amenities: Amenity[]
   coordinates: {lat: number; lng: number}
   images: string[]
@@ -351,7 +361,10 @@ export async function updateListing(propertyId: string, edit: ListingEdit): Prom
     },
     rooms: edit.rooms,
     area: edit.area,
+    minGuests: edit.minGuests,
     maxGuests: edit.maxGuests,
+    locationTags: edit.locationTags,
+    locationCategory: edit.locationCategory,
     amenities: edit.amenities,
     coordinates: edit.coordinates,
     images: edit.images,
@@ -415,7 +428,10 @@ export async function updateListingAsModerator(
     },
     rooms: edit.rooms,
     area: edit.area,
+    minGuests: edit.minGuests,
     maxGuests: edit.maxGuests,
+    locationTags: edit.locationTags,
+    locationCategory: edit.locationCategory,
     amenities: edit.amenities,
     coordinates: edit.coordinates,
     images: edit.images,
