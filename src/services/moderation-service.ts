@@ -87,22 +87,35 @@ export async function deleteProperty(propertyId: string): Promise<void> {
     const snapshot = await getDoc(doc(db, 'properties', propertyId))
     const images = (snapshot.data() as Property | undefined)?.images ?? []
 
+    // ⚠️ Отказы СЧИТАЮТСЯ и уходят в журнал. Пустой `catch` скрывал сразу две
+    // ошибки, и обе нашлись только ручной сверкой хранилища.
+    const failed: string[] = []
+
     for (const url of images) {
-      // Адрес в базе бывает трёх видов: путь сайта `/api/images/...`, полная
-      // ссылка Storage с токеном (так пишет приложение) и старый `gs://`.
-      // Разбирает их общая с сайтом `storagePathFromImageSource`.
+      // Адрес в базе бывает ЧЕТЫРЁХ видов: относительный путь сайта
+      // `/api/images/...`, ПОЛНЫЙ адрес прокси `https://birklik.az/api/images/...`
+      // (его строит приложение и сохраняет при правке объявления), полная ссылка
+      // Storage с токеном и старый `gs://`. Разбирает их общая с сайтом
+      // `storagePathFromImageSource`; полный адрес прокси она понимает с
+      // 2026-09-26 — до этого снимки правленных объявлений оставались навсегда.
       const path = storagePathFromImageSource(url)
-      if (!path) continue
+      if (!path) {
+        failed.push(`${url} — адрес не разобрался`)
+        continue
+      }
 
       try {
         await deleteObject(ref(storage, path))
-      } catch {
-        // ⚠️ Правила Storage пускают к удалению только того, кто файл загрузил:
-        // в пути стоит `request.auth.uid == userId`. Чужие снимки модератор
-        // удалить не может, и это не чинится из клиента — их подберёт
-        // еженедельная чистка сирот. Падать нельзя: объявление убрать надо в
-        // любом случае.
+      } catch (error) {
+        // Правила Storage пускают к удалению владельца файла ИЛИ модератора
+        // (метка `moderator` в токене, добавлено 2026-09-26). Падать нельзя:
+        // объявление убрать надо в любом случае.
+        failed.push(`${url} — ${error instanceof Error ? error.message : String(error)}`)
       }
+    }
+
+    if (failed.length > 0) {
+      console.warn(`[deleteProperty] не убрано ${failed.length} из ${images.length}:`, failed)
     }
   } catch {
     // Не прочитали документ — значит и снимков не знаем. Удаление самого

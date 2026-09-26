@@ -190,16 +190,32 @@ export async function deleteOwnProperty(propertyId: string, ownerId: string): Pr
     const snapshot = await getDoc(doc(db, 'properties', propertyId))
     const images = (snapshot.data() as Property | undefined)?.images ?? []
 
+    // ⚠️ Отказ здесь НЕ проглатывается молча — он пишется в журнал с причиной.
+    // Раньше обе ветки были пустыми, и из-за этого незамеченной прожила ошибка
+    // разбора: полный адрес прокси `https://birklik.az/api/images/...` не
+    // разбирался, `continue` пропускал его без следа, и снимки удалённого
+    // объявления оставались в хранилище навсегда. Найдено только сверкой
+    // хранилища вручную.
+    const failed: string[] = []
+
     for (const url of images) {
       const path = storagePathFromImageSource(url)
-      if (!path) continue
+      if (!path) {
+        failed.push(`${url} — адрес не разобрался`)
+        continue
+      }
       try {
         await deleteObject(ref(storage, path))
-      } catch {
+      } catch (error) {
         // Файла уже нет либо он загружен не этим человеком — правила Storage
         // держат `request.auth.uid == userId` прямо в пути. Объявление убрать
         // надо в любом случае; остатки подберёт еженедельная чистка сирот.
+        failed.push(`${url} — ${error instanceof Error ? error.message : String(error)}`)
       }
+    }
+
+    if (failed.length > 0) {
+      console.warn(`[deleteOwnProperty] не убрано ${failed.length} из ${images.length}:`, failed)
     }
   } catch {
     // Не прочитали документ — значит и снимков не знаем. Удаление самого
