@@ -73,6 +73,8 @@ export default function EditListingScreen() {
         maxGuests: values.maxGuests,
         locationTags: values.locationTags,
         locationCategory: values.locationCategory,
+        extraFeatures: values.extraFeatures,
+        nearbyPlaces: values.nearbyPlaces,
         amenities: values.amenities,
         coordinates,
         images

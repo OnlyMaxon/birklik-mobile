@@ -135,6 +135,9 @@ export interface NewListing {
   /** Метки места внутри города. По ним отбирает фильтр сайта. */
   locationTags: string[]
   locationCategory: LocationCategory
+  /** «Доп. фильтры» и «Рядом» — по ним тоже отбирает сайт. */
+  extraFeatures: string[]
+  nearbyPlaces: string[]
   amenities: Amenity[]
   coordinates: {lat: number; lng: number}
   images: string[]
@@ -275,7 +278,18 @@ export async function createListing(listing: NewListing): Promise<string> {
     type: listing.type,
     city: listing.city,
     district: listing.district,
-    price: {daily: listing.price, weekly: listing.price * 7, monthly: listing.price * 30, currency: 'AZN'},
+    // ⚠️ Множители те же, что на сайте: неделя по цене ШЕСТИ ночей, месяц по
+    // цене двадцати четырёх. Это скидка за длительность, а не простое
+    // умножение — в приложении стояло 7 и 30, и те же сутки давали разную
+    // недельную цену в зависимости от того, откуда подали объявление.
+    // Сейчас эти два поля не читает никто, но расхождение в базе всплыло бы в
+    // тот день, когда их начнут показывать.
+    price: {
+      daily: listing.price,
+      weekly: listing.price * 6,
+      monthly: listing.price * 24,
+      currency: 'AZN'
+    },
     rooms: listing.rooms,
     area: listing.area,
     // Обе границы вместимости спрашиваются в форме, как на сайте. Раньше
@@ -287,6 +301,8 @@ export async function createListing(listing: NewListing): Promise<string> {
     // вовсе — см. CityLocationPicker.
     locationTags: listing.locationTags,
     locationCategory: listing.locationCategory,
+    extraFeatures: listing.extraFeatures,
+    nearbyPlaces: listing.nearbyPlaces,
     amenities: listing.amenities,
     coordinates: listing.coordinates,
     images: listing.images,
@@ -338,6 +354,9 @@ export interface ListingEdit {
   maxGuests: number
   locationTags: string[]
   locationCategory: LocationCategory
+  /** «Доп. фильтры» и «Рядом» — по ним тоже отбирает сайт. */
+  extraFeatures: string[]
+  nearbyPlaces: string[]
   amenities: Amenity[]
   coordinates: {lat: number; lng: number}
   images: string[]
@@ -355,8 +374,9 @@ export async function updateListing(propertyId: string, edit: ListingEdit): Prom
     district: edit.district,
     price: {
       daily: edit.price,
-      weekly: edit.price * 7,
-      monthly: edit.price * 30,
+      // Те же множители, что при создании и на сайте — см. createListing.
+      weekly: edit.price * 6,
+      monthly: edit.price * 24,
       currency: 'AZN'
     },
     rooms: edit.rooms,
@@ -365,6 +385,8 @@ export async function updateListing(propertyId: string, edit: ListingEdit): Prom
     maxGuests: edit.maxGuests,
     locationTags: edit.locationTags,
     locationCategory: edit.locationCategory,
+    extraFeatures: edit.extraFeatures,
+    nearbyPlaces: edit.nearbyPlaces,
     amenities: edit.amenities,
     coordinates: edit.coordinates,
     images: edit.images,
@@ -422,8 +444,9 @@ export async function updateListingAsModerator(
     district: edit.district,
     price: {
       daily: edit.price,
-      weekly: edit.price * 7,
-      monthly: edit.price * 30,
+      // Те же множители, что при создании и на сайте — см. createListing.
+      weekly: edit.price * 6,
+      monthly: edit.price * 24,
       currency: 'AZN'
     },
     rooms: edit.rooms,
@@ -432,6 +455,8 @@ export async function updateListingAsModerator(
     maxGuests: edit.maxGuests,
     locationTags: edit.locationTags,
     locationCategory: edit.locationCategory,
+    extraFeatures: edit.extraFeatures,
+    nearbyPlaces: edit.nearbyPlaces,
     amenities: edit.amenities,
     coordinates: edit.coordinates,
     images: edit.images,

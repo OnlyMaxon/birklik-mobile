@@ -13,7 +13,13 @@ import {
 import * as ImagePicker from 'expo-image-picker'
 import {Ionicons} from '@expo/vector-icons'
 
-import {amenitiesList, cities, propertyTypes} from '@birklik/core/data'
+import {
+  amenitiesList,
+  cities,
+  moreFilterOptions,
+  nearFilterOptions,
+  propertyTypes
+} from '@birklik/core/data'
 import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
 
 import {CityLocationPicker} from '@/components/city-location-picker'
@@ -43,6 +49,9 @@ export interface ListingFormValues {
   locationTags: string[]
   locationCategory: LocationCategory
   amenities: Amenity[]
+  /** «Доп. фильтры» и «Рядом» — по ним тоже отбирает сайт. */
+  extraFeatures: string[]
+  nearbyPlaces: string[]
   /** Уже загруженные снимки — их адреса. Порядок значим: первый идёт на карточку. */
   existingImages: string[]
   /** Только что выбранные с устройства. Загружаются при отправке. */
@@ -119,6 +128,8 @@ export function ListingForm({
   const [minGuests, setMinGuests] = useState(property ? String(property.minGuests ?? '') : '')
   const [guests, setGuests] = useState(property ? String(property.maxGuests ?? '') : '')
   const [amenities, setAmenities] = useState<Amenity[]>(property?.amenities ?? [])
+  const [extraFeatures, setExtraFeatures] = useState<string[]>(property?.extraFeatures ?? [])
+  const [nearbyPlaces, setNearbyPlaces] = useState<string[]>(property?.nearbyPlaces ?? [])
 
   // У объявления в правке точка уже есть — показываем её, а не центр Баку.
   const [coordinates, setCoordinates] = useState<{lat: number; lng: number} | null>(
@@ -244,6 +255,8 @@ export function ListingForm({
       locationTags,
       locationCategory,
       amenities,
+      extraFeatures,
+      nearbyPlaces,
       existingImages: existing,
       newImages: picked,
       coordinates,
@@ -383,6 +396,38 @@ export function ListingForm({
               current.includes(value as Amenity)
                 ? current.filter(item => item !== value)
                 : [...current, value as Amenity]
+            )
+          }
+        />
+
+        {/* ⚠️ «Доп. фильтры» и «Рядом» — не украшение: по ним тоже отбирает
+            сайт (`extraFeatures` и `nearbyPlaces` в filterProperties).
+            Приложение их не спрашивало и не писало, и объявление с телефона в
+            эти два отбора не попадало — ровно как было с районом. */}
+        <Chips
+          label={t.search.moreFilters}
+          options={moreFilterOptions.map(option => ({
+            value: option.key,
+            label: t.amenities?.[option.key as keyof typeof t.amenities] ?? option.key
+          }))}
+          selected={extraFeatures}
+          onToggle={value =>
+            setExtraFeatures(current =>
+              current.includes(value) ? current.filter(item => item !== value) : [...current, value]
+            )
+          }
+        />
+
+        <Chips
+          label={t.search.near}
+          options={nearFilterOptions.map(option => ({
+            value: option.key,
+            label: t.amenities?.[option.key as keyof typeof t.amenities] ?? option.key
+          }))}
+          selected={nearbyPlaces}
+          onToggle={value =>
+            setNearbyPlaces(current =>
+              current.includes(value) ? current.filter(item => item !== value) : [...current, value]
             )
           }
         />
