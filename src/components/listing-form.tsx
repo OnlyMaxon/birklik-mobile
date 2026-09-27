@@ -2,7 +2,6 @@ import {useState, type ReactNode} from 'react'
 import {
   Image,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -275,7 +274,13 @@ export function ListingForm({
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // ⚠️ `padding` и на Android тоже. Раньше здесь стояло `undefined`, то есть
+      // KeyboardAvoidingView на Android не делал НИЧЕГО, а поле держалось на
+      // `windowSoftInputMode="adjustResize"`: система ужимала окно, и разметка
+      // по центру сама уезжала вверх. С `edgeToEdgeEnabled=true` окно больше не
+      // ужимается — приложение рисует под клавиатурой, и поле пароля уходило
+      // под неё. RN 0.86 читает отступы клавиатуры на обеих платформах.
+      behavior="padding"
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {header}

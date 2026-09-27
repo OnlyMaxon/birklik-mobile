@@ -1,4 +1,4 @@
-import type {Comment} from '@birklik/core/types'
+import type {Comment, ReportReason} from '@birklik/core/types'
 
 import {auth} from '@/lib/firebase'
 
@@ -68,4 +68,25 @@ export async function addRating(
   rating: number
 ): Promise<{success: true; rating: number; reviews: number} | {success: false; error: string}> {
   return post(`/api/property/ratings`, {propertyId, rating})
+}
+
+/**
+ * Жалоба на отзыв.
+ *
+ * ⚠️ Через тот же адрес сайта, что отзывы и оценки, а не своей записью в базу.
+ * Правила Firestore клиенту `commentReports` писать не дают, и — важнее —
+ * правило «одна жалоба на отзыв от человека», состав записи и оповещение
+ * модераторов живут в общей функции `reportComment`. Своя реализация разошлась
+ * бы с сайтом, а очередь модерации у них одна.
+ *
+ * Отдельный случай отказа — `duplicate`: на этот отзыв человек уже жаловался.
+ */
+export async function reportComment(
+  propertyId: string,
+  commentId: string,
+  commentText: string,
+  reason: ReportReason,
+  details?: string
+): Promise<{success: true} | {success: false; error: string}> {
+  return post(`/api/property/report`, {propertyId, commentId, commentText, reason, details})
 }

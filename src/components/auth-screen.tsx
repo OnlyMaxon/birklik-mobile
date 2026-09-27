@@ -1,7 +1,6 @@
 import {type ReactNode} from 'react'
 import {
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,7 +33,13 @@ export function AuthScreen({title, subtitle, children, footer}: Props) {
   return (
     <KeyboardAvoidingView
       style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // ⚠️ `padding` и на Android тоже. Раньше здесь стояло `undefined`, то есть
+      // KeyboardAvoidingView на Android не делал НИЧЕГО, а поле держалось на
+      // `windowSoftInputMode="adjustResize"`: система ужимала окно, и разметка
+      // по центру сама уезжала вверх. С `edgeToEdgeEnabled=true` окно больше не
+      // ужимается — приложение рисует под клавиатурой, и поле пароля уходило
+      // под неё. RN 0.86 читает отступы клавиатуры на обеих платформах.
+      behavior="padding"
     >
       <ScrollView
         contentContainerStyle={styles.content}
@@ -69,6 +74,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
+
+    // ⚠️ Нижний отступ БОЛЬШЕ верхнего намеренно: при `justifyContent:
+    // 'center'` лишнее место снизу поднимает карточку вверх. Ровно по центру
+    // она стояла слишком низко — под клавиатурой оказывались последние поля,
+    // а на регистрации, где их пять, из-под неё уходила половина формы.
+    paddingBottom: spacing.lg * 5,
     gap: spacing.lg
   },
   logo: {width: 190, height: 190 / 4},

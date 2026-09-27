@@ -40,6 +40,29 @@ export class BookingConflictError extends Error {
 
 const COLLECTION = 'bookings'
 
+
+/**
+ * Бронь, которой в списке больше не место: отклонённая, отменённая или уже
+ * прошедшая.
+ *
+ * ⚠️ Отбор повторяет сайт (`bookings-tab.tsx`) дословно. Без него приложение
+ * показывало ВСЁ подряд: отменённая гостем бронь и отклонённая владельцем
+ * заявка висели в списках навсегда, хотя на сайте исчезали. Сами документы
+ * никуда не деваются — отмена меняет статус, а не удаляет запись, — поэтому
+ * скрывать их приходится на чтении.
+ */
+function isArchived(booking: Booking): boolean {
+  if (booking.status === 'rejected' || booking.status === 'cancelled') return true
+
+  // Дата выезда — строка 'YYYY-MM-DD'. Сравниваем по началу суток, как сайт:
+  // бронь, которая кончается сегодня, ещё не прошедшая.
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const checkOut = new Date(booking.checkOutDate)
+  checkOut.setHours(0, 0, 0, 0)
+  return checkOut < today
+}
+
 /**
  * Брони человека — те, что он оформил сам.
  *
@@ -53,6 +76,7 @@ export async function getUserBookings(userId: string): Promise<Booking[]> {
   )
   return snapshot.docs
     .map(d => ({id: d.id, ...d.data()}) as Booking)
+    .filter(booking => !isArchived(booking))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
 }
 
@@ -68,6 +92,7 @@ export async function getOwnerBookings(ownerId: string): Promise<Booking[]> {
   )
   return snapshot.docs
     .map(d => ({id: d.id, ...d.data()}) as Booking)
+    .filter(booking => !isArchived(booking))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
 }
 
