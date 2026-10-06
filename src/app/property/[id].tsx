@@ -82,6 +82,10 @@ export default function PropertyScreen() {
   const premium = isTierActive(property, 'premium')
   const vip = !premium && isTierActive(property, 'vip')
   const phone = property.owner?.phone
+  // Имя владельца. На сайте оно стоит над телефоном в блоке «Контакты», а в
+  // приложении не показывалось вовсе, хотя `owner` приходит целиком тем же
+  // документом — читали из него один телефон.
+  const ownerName = property.owner?.name
 
   return (
     <>
@@ -191,13 +195,19 @@ export default function PropertyScreen() {
 
           {/* Звонок остаётся рядом с бронью, а не вместо неё: за всё время
               работы площадки договаривались именно звонком. */}
-          {phone ? (
-            <Pressable
-              style={styles.callButton}
-              onPress={() => Linking.openURL(`tel:${phone}`)}
-            >
-              <Text style={styles.callButtonText}>{t.property.contact}: {phone}</Text>
-            </Pressable>
+          {(ownerName || phone) ? (
+            <View style={styles.owner}>
+              <Text style={styles.ownerLabel}>{t.property.contact}</Text>
+              {ownerName ? <Text style={styles.ownerName}>{ownerName}</Text> : null}
+              {phone ? (
+                <Pressable
+                  style={styles.callButton}
+                  onPress={() => Linking.openURL(`tel:${phone}`)}
+                >
+                  <Text style={styles.callButtonText}>{phone}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
 
           <RatingWidget property={property} />
@@ -306,8 +316,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm
   },
   amenityText: {fontSize: fontSize.sm, color: colors.gray700},
+  // Блок «Контакты» — заголовок, имя владельца, кнопка звонка. Порядок тот же,
+  // что в карточке брони на сайте.
+  owner: {marginTop: spacing.xl, gap: spacing.xs},
+  ownerLabel: {fontSize: fontSize.sm, color: colors.neutral, fontWeight: '600'},
+  ownerName: {fontSize: fontSize.lg, color: colors.text, fontWeight: '700'},
   callButton: {
-    marginTop: spacing.xl,
+    marginTop: spacing.xs,
     backgroundColor: colors.primary,
     borderRadius: radius.base,
     paddingVertical: spacing.base,

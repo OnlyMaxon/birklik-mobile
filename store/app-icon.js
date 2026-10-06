@@ -2,7 +2,11 @@ const {createRequire} = require('node:module')
 const req = createRequire('D:/VS/Birklik.az/package.json')
 const sharp = req('sharp')
 const A = 'D:/VS/Birklik-mobile/assets/images/'
-const DARK = '#123b2b'
+// Белый. До сборки 11 здесь был тёмно-зелёный #123b2b: на фирменном #2E7D5B
+// зелёные лучи знака сливались с фоном, и тёмный был из двух зол меньшим.
+// Белый снимает вопрос совсем — лучи контрастны к нему все, и знак одинаково
+// читается на светлой и тёмной обложке рабочего стола.
+const BG = '#ffffff'
 
 ;(async () => {
   // Знак без надписи: столбцы 0..267 в logo.png, дальше пустота и слово.
@@ -22,16 +26,21 @@ const DARK = '#123b2b'
     .png({compressionLevel: 9})
     .toFile(A + 'android-icon-foreground.png')
 
-  // ---- Задний слой: тёмно-зелёный. На фирменном #2E7D5B зелёные лучи знака
-  // сливались с фоном — проверено сравнением трёх вариантов.
-  await sharp({create: {width: 432, height: 432, channels: 3, background: DARK}})
+  // ---- Задний слой: белый, сплошной.
+  //
+  // ⚠️ Слой обязан остаться НЕПРОЗРАЧНЫМ. Прозрачный задний слой адаптивной
+  // иконки Android заливает чёрным, а не цветом пусковой темы — знак на чёрном
+  // это ровно то, от чего уходим.
+  await sharp({create: {width: 432, height: 432, channels: 3, background: BG}})
     .png({compressionLevel: 9}).toFile(A + 'android-icon-background.png')
 
   // ---- Общий значок (iOS, веб): тот же знак на том же фоне, 1024.
+  //
+  // ⚠️ flatten обязателен: iOS прозрачность в значке не принимает вовсе.
   const big = await sharp(trimmed).resize(784, 784, {fit: 'contain', background: {r: 0, g: 0, b: 0, alpha: 0}}).png().toBuffer()
-  await sharp({create: {width: 1024, height: 1024, channels: 4, background: DARK}})
+  await sharp({create: {width: 1024, height: 1024, channels: 4, background: BG}})
     .composite([{input: big, top: 120, left: 120}])
-    .flatten({background: DARK})
+    .flatten({background: BG})
     .png({compressionLevel: 9})
     .toFile(A + 'icon.png')
 

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react'
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View} from 'react-native'
 import {SafeAreaView} from 'react-native-safe-area-context'
 import {Ionicons} from '@expo/vector-icons'
@@ -39,6 +39,10 @@ export default function HomeScreen() {
   // Карта по умолчанию скрыта. На сайте она тоже приходит свёрнутой на узких
   // экранах: карта тяжелее списка и на телефоне занимает его целиком.
   const [mapOpen, setMapOpen] = useState(false)
+  // Вид списка — как переключатель «Компактный» на сайте.
+  const [compact, setCompact] = useState(false)
+
+  const listRef = useRef<FlatList<Property>>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -79,6 +83,19 @@ export default function HomeScreen() {
       type: filters.type || undefined,
       minPrice: filters.minPrice ?? undefined,
       maxPrice: filters.maxPrice ?? undefined,
+      rooms: filters.rooms ?? undefined,
+      hasPool: filters.hasPool,
+      // Списки передаются как есть: пустой общая функция пропускает сама
+      // (`length > 0` перед каждой проверкой), поэтому разворачивать их в
+      // undefined незачем.
+      //
+      // ⚠️ `locationCategory` отбор НЕ использует — в `filterProperties` он
+      // принимается и игнорируется, место ищется по одним `locationTags`.
+      // Передаём ради полноты: станет значимым — работать начнёт само.
+      locationCategory: filters.locationCategory,
+      locationTags: filters.locationTags,
+      extraFilters: filters.extraFilters,
+      nearbyPlaces: filters.nearbyPlaces,
       minGuests: filters.minGuests ?? undefined,
       // Кнопки подписаны «4+», то есть «вмещает не меньше четырёх». Общая
       // функция сравнивает ДИАПАЗОНЫ и при отсутствии верхней границы
@@ -110,29 +127,31 @@ export default function HomeScreen() {
           value={filters.search}
           onChangeText={search => patch({search})}
           onOpenFilters={() => setSheetOpen(true)}
+          onSearch={() => listRef.current?.scrollToOffset({offset: 0, animated: true})}
           activeCount={activeCount}
         />
-        <View style={styles.countRow}>
-          <Text style={styles.count}>
-            {visible.length} / {all.length}
-          </Text>
+
+        {/* ⚠️ Числа «найдено / всего» здесь больше нет — убрано намеренно по
+            решению владельца: сколько объявлений на площадке, посетителю знать
+            не нужно. Пустая выдача по-прежнему объясняется подписью под
+            списком, так что молчания не получается. */}
+        <View style={styles.toolRow}>
+          {/* Вид списка — переключатель «Компактный» с сайта. */}
+          <Toggle
+            active={compact}
+            icon={compact ? 'square-outline' : 'grid-outline'}
+            label={compact ? t.search.normalView : t.search.compactView}
+            onPress={() => setCompact(open => !open)}
+          />
 
           {/* Переключатель карты — как кнопка «Показать карту» на сайте.
               Подписи берём из общего пакета, свои не выдумываем. */}
-          <Pressable
+          <Toggle
+            active={mapOpen}
+            icon={mapOpen ? 'list-outline' : 'map-outline'}
+            label={mapOpen ? t.home.hideMap : t.home.showMap}
             onPress={() => setMapOpen(open => !open)}
-            style={[styles.mapToggle, mapOpen && styles.mapToggleActive]}
-            hitSlop={6}
-          >
-            <Ionicons
-              name={mapOpen ? 'list-outline' : 'map-outline'}
-              size={15}
-              color={mapOpen ? colors.white : colors.primary}
-            />
-            <Text style={[styles.mapToggleText, mapOpen && styles.mapToggleTextActive]}>
-              {mapOpen ? t.home.hideMap : t.home.showMap}
-            </Text>
-          </Pressable>
+          />
         </View>
       </View>
 
@@ -143,9 +162,16 @@ export default function HomeScreen() {
       )}
 
       <FlatList
+        ref={listRef}
         data={visible}
+        // ⚠️ Смена числа столбцов требует НОВОГО списка: FlatList не умеет
+        // перестраивать сетку на лету и роняет приложение с явной ошибкой.
+        // Другой `key` заставляет React создать список заново.
+        key={compact ? 'compact' : 'normal'}
+        numColumns={compact ? 2 : 1}
+        columnWrapperStyle={compact ? styles.column : undefined}
         keyExtractor={property => property.id}
-        renderItem={({item}) => <PropertyCard property={item} />}
+        renderItem={({item}) => <PropertyCard property={item} compact={compact} />}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -174,6 +200,31 @@ export default function HomeScreen() {
   )
 }
 
+/** Переключатель в ряду под поиском: вид списка и карта выглядят одинаково. */
+function Toggle({
+  active,
+  icon,
+  label,
+  onPress
+}: {
+  active: boolean
+  icon: React.ComponentProps<typeof Ionicons>['name']
+  label: string
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.toggle, active && styles.toggleActive]}
+      hitSlop={6}
+      accessibilityRole="button"
+    >
+      <Ionicons name={icon} size={15} color={active ? colors.white : colors.primary} />
+      <Text style={[styles.toggleText, active && styles.toggleTextActive]}>{label}</Text>
+    </Pressable>
+  )
+}
+
 const styles = StyleSheet.create({
   screen: {flex: 1, backgroundColor: colors.gray50},
   center: {
@@ -188,13 +239,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     gap: spacing.xs
   },
-  count: {fontSize: fontSize.xs, color: colors.neutral, paddingLeft: spacing.xs},
-  countRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  mapToggle: {
+  toolRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  toggle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -205,12 +251,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray200
   },
-  mapToggleActive: {
+  toggleActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary
   },
-  mapToggleText: {fontSize: fontSize.xs, fontWeight: '700', color: colors.primary},
-  mapToggleTextActive: {color: colors.white},
+  toggleText: {fontSize: fontSize.xs, fontWeight: '700', color: colors.primary},
+  toggleTextActive: {color: colors.white},
+  column: {gap: spacing.md},
   mapWrap: {paddingHorizontal: spacing.md, paddingBottom: spacing.sm},
   list: {paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md},
   empty: {alignItems: 'center', paddingVertical: spacing.xxl, gap: spacing.sm},

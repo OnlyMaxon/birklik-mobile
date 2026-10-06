@@ -1,0 +1,127 @@
+import {useEffect, useRef, useState} from 'react'
+import {Animated, Easing, StyleSheet, useWindowDimensions, View} from 'react-native'
+import {Image} from 'expo-image'
+import * as SplashScreen from 'expo-splash-screen'
+
+import {colors} from '@/theme/theme'
+
+/**
+ * Крупный логотип при запуске.
+ *
+ * ⚠️ Это НЕ замена системной заставке, а её продолжение. С Android 12 первый
+ * кадр рисует система и обрезает значок кругом — логотип с надписью шире
+ * ~155 точек там обрежется по краям (расчёт в `store/make-splash.js`). Поэтому
+ * системная заставка показывает логотип скромно, а крупным его делает уже
+ * приложение, обычной разметкой, где никакой маски нет.
+ *
+ * Чтобы перехода не было видно, накладка начинает ровно с того состояния, в
+ * котором системная заставка закончила: тот же белый фон, тот же логотип той
+ * же ширины `NATIVE_WIDTH`. В момент `SplashScreen.hideAsync()` на экране
+ * меняется ВСЁ, но человек не видит ничего — кадры совпадают.
+ *
+ * ⚠️ `NATIVE_WIDTH` обязан совпадать с `imageWidth` в app.json. Разъехались —
+ * появится скачок размера в момент подмены.
+ */
+const NATIVE_WIDTH = 150
+
+/** Доля ширины экрана, до которой логотип вырастает. */
+const GROWN_SHARE = 0.72
+const GROWN_MAX = 320
+
+const GROW_MS = 520
+const FADE_MS = 340
+
+type Props = {
+  /** Содержимое готово — можно расти и уходить. */
+  reveal: boolean
+}
+
+export function SplashGate({reveal}: Props) {
+  const {width} = useWindowDimensions()
+  const [gone, setGone] = useState(false)
+
+  // Анимации заводятся один раз на всё время жизни: пересоздание на каждую
+  // отрисовку оборвало бы начатое движение.
+  const scale = useRef(new Animated.Value(1)).current
+  const opacity = useRef(new Animated.Value(1)).current
+
+  const grown = Math.min(width * GROWN_SHARE, GROWN_MAX)
+
+  /**
+   * Системную заставку снимает САМА накладка, а не тот, кто её показал.
+   *
+   * ⚠️ Порядок здесь важнее, чем кажется. Снимать заставку рядом с `setReady`
+   * нельзя: состояние меняется в одной микрозадаче, а отрисовка происходит
+   * позже, и заставка успевала уйти ДО того, как накладка окажется на экране.
+   * В эту щель человек видел кадр с крутящимся кружком. Здесь же эффект
+   * выполняется уже после отрисовки накладки — закрывать нечего, она на месте.
+   */
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    if (!reveal) return
+
+    Animated.sequence([
+      // Выдох: логотип набирает размер. Замедление к концу, а не равномерно —
+      // равномерное движение глаз читает как рывок.
+      Animated.timing(scale, {
+        toValue: grown / NATIVE_WIDTH,
+        duration: GROW_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: FADE_MS,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true
+      })
+    ]).start(() => {
+      // Снимаем накладку независимо от того, доиграла анимация или её
+      // прервали: оборванная оставила бы поверх приложения полупрозрачный
+      // белый лист, сквозь который не проходят нажатия.
+      setGone(true)
+    })
+  }, [reveal, grown, scale, opacity])
+
+  if (gone) return null
+
+  return (
+    // Нажатия НЕ пропускаем: пока виден логотип, под ним уже разложен рабочий
+    // экран, и случайное касание открыло бы объявление вслепую.
+    <View style={styles.sheet}>
+      <Animated.View style={{opacity, transform: [{scale}]}}>
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={styles.logo}
+          contentFit="contain"
+          // Логотип лежит в сборке, не в сети: ждать нечего, и плавное
+          // проявление здесь дало бы мигание поверх системной заставки.
+          transition={0}
+        />
+      </Animated.View>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  sheet: {
+    // Растянуто по всему окну. Поля перечислены прямо, а не через
+    // `StyleSheet.absoluteFillObject`: в этой версии React Native его нет.
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Поверх всего, включая шапку навигации.
+    zIndex: 10,
+    elevation: 10
+  },
+  // Пропорция логотипа 4:1 — высоту считаем, а не задаём на глаз.
+  logo: {width: NATIVE_WIDTH, height: NATIVE_WIDTH / 4}
+})

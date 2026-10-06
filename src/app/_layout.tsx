@@ -11,6 +11,7 @@ import {HeaderLogo} from '@/components/header-logo'
 import {LanguageSwitch} from '@/components/language-switch'
 import {NotificationsButton} from '@/components/notifications-button'
 import {PushRegistrar} from '@/components/push-registrar'
+import {SplashGate} from '@/components/splash-gate'
 import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
 import {colors, fontSize, spacing} from '@/theme/theme'
@@ -24,6 +25,10 @@ import {colors, fontSize, spacing} from '@/theme/theme'
 //
 // Вызов на уровне модуля, до первой отрисовки: позже уже поздно. Отказ гасится
 // намеренно — на этом месте исключение оставило бы приложение без интерфейса.
+//
+// ⚠️ Снимает заставку `SplashGate`, а не этот файл: сделать это здесь значит
+// сделать это ДО того, как накладка окажется на экране, и в щель между ними
+// виден лишний кадр. Подробности — в самой накладке.
 SplashScreen.preventAutoHideAsync().catch(() => undefined)
 
 // Тёмная тема пока не делается: на вебе её нет, а разъезжаться в оформлении
@@ -40,30 +45,41 @@ export default function RootLayout() {
     initAppCheck()
       .then(() => setReady(true))
       .catch(() => setFailed(true))
-      // Заставка уходит в обоих случаях: и когда всё хорошо, и когда App Check
-      // не поднялся. Иначе сообщение об ошибке осталось бы под ней, и вместо
-      // объяснения человек смотрел бы на застывший логотип.
-      .finally(() => {
-        void SplashScreen.hideAsync().catch(() => undefined)
-      })
   }, [])
 
+  // Логотип уходит в обоих случаях: и когда всё хорошо, и когда App Check не
+  // поднялся. Иначе сообщение об ошибке осталось бы под ним, и вместо
+  // объяснения человек смотрел бы на застывший логотип.
+  const reveal = ready || failed
+
+  // ⚠️ Раннего возврата здесь быть не должно. Накладка с логотипом обязана
+  // висеть поверх ЛЮБОГО из трёх состояний — ожидания, отказа и рабочего
+  // экрана, — иначе в момент подмены виден лишний кадр. Поэтому ветвится
+  // только содержимое, а дерево остаётся одним.
   if (failed) {
     // Молча пускать дальше нельзя: без App Check не откроется ни один экран с
     // данными, и пользователь увидит пустоту вместо объяснения.
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>Не удалось подключиться к серверу</Text>
-        <Text style={styles.hint}>Проверьте соединение и перезапустите приложение</Text>
-      </View>
+      <>
+        <View style={styles.center}>
+          <Text style={styles.error}>Не удалось подключиться к серверу</Text>
+          <Text style={styles.hint}>Проверьте соединение и перезапустите приложение</Text>
+        </View>
+        <SplashGate reveal={reveal} />
+      </>
     )
   }
 
   if (!ready) {
+    // Кружок под накладкой почти никогда не виден — он на случай, если та
+    // почему-то не отрисовалась, чтобы экран не остался пустым.
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+        <SplashGate reveal={reveal} />
+      </>
     )
   }
 
@@ -145,6 +161,7 @@ export default function RootLayout() {
           </Stack>
         </AuthProvider>
       </LanguageProvider>
+      <SplashGate reveal={reveal} />
     </SafeAreaProvider>
   )
 }

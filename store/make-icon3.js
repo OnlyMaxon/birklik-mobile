@@ -4,15 +4,18 @@ const sharp = req('sharp')
 const fs = require('node:fs')
 const out = process.argv[2]
 const LOGO = 'D:/VS/Birklik-mobile/assets/images/logo.png'
+const BG = '#ffffff'
 
 ;(async () => {
   // Знак занимает столбцы 0..267 (измерено по альфа-каналу), дальше пустота и надпись.
   const cut = await sharp(LOGO).extract({left: 0, top: 0, width: 268, height: 256}).png().toBuffer()
   const mark = await sharp(cut).trim().resize(392, 392, {fit: 'contain', background: {r: 0, g: 0, b: 0, alpha: 0}}).png().toBuffer()
 
-  await sharp({create: {width: 512, height: 512, channels: 4, background: '#2E7D5B'}})
+  // Фон белый и обязан совпадать с пусковым значком (app-icon.js): расхождение
+  // значка в магазине и на телефоне — типовая придирка проверяющих.
+  await sharp({create: {width: 512, height: 512, channels: 4, background: BG}})
     .composite([{input: mark, top: 60, left: 60}])
-    .flatten({background: '#2E7D5B'})
+    .flatten({background: BG})
     .png({compressionLevel: 9})
     .toFile(out + '/icon-512.png')
 
