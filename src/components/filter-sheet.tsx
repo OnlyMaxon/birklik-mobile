@@ -1,17 +1,18 @@
 import {useMemo, useState} from 'react'
 import {Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View} from 'react-native'
+import {useSafeAreaInsets} from 'react-native-safe-area-context'
 import {Ionicons} from '@expo/vector-icons'
 
 import {
-  cities,
   cityDistricts,
   cityLocationOptions,
   moreFilterOptions,
   nearFilterOptions,
   propertyTypes
 } from '@birklik/core/data'
-import type {Language, LocationCategory, PropertyType} from '@birklik/core/types'
+import type {LocationCategory, PropertyType} from '@birklik/core/types'
 
+import {CityPicker} from '@/components/city-picker'
 import {PrimaryButton} from '@/components/primary-button'
 import {EMPTY_FILTERS, type Filters} from '@/filters/use-filters'
 import {useLanguage} from '@/i18n/language-provider'
@@ -32,11 +33,6 @@ const QUICK_NEAR = ['beach', 'sea', 'forest', 'park']
 
 const ROOM_CHOICES = [1, 2, 3, 4, 5, 6, 7]
 
-function cityLabel(value: string, language: Language): string {
-  const option = cities.find(city => city.value === value)
-  return option ? option[language] : value
-}
-
 /**
  * Лист фильтров — тот же набор условий, что в расширенном фильтре сайта.
  *
@@ -49,6 +45,11 @@ function cityLabel(value: string, language: Language): string {
  */
 export function FilterSheet({visible, filters, availableCities, onApply, onClose}: Props) {
   const {language, t} = useLanguage()
+  // ⚠️ Отступы выреза обязательны. `presentationStyle="pageSheet"` на Android
+  // не поддерживается и разворачивает лист во ВЕСЬ экран — заголовок налезал
+  // на часы и значки сети. На снимке с устройства это видно сразу, в коде —
+  // никак: ни типы, ни тесты высоты строки состояния не знают.
+  const insets = useSafeAreaInsets()
   const [draft, setDraft] = useState<Filters>(filters)
   const [showMore, setShowMore] = useState(false)
   const [showNear, setShowNear] = useState(false)
@@ -178,7 +179,7 @@ export function FilterSheet({visible, filters, availableCities, onApply, onClose
       onRequestClose={onClose}
     >
       <View style={styles.sheet}>
-        <View style={styles.head}>
+        <View style={[styles.head, {paddingTop: insets.top + spacing.sm}]}>
           <Text style={styles.headTitle}>{t.search.filters}</Text>
           <Pressable onPress={onClose} hitSlop={10}>
             <Text style={styles.headClose}>{t.buttons.close}</Text>
@@ -187,29 +188,13 @@ export function FilterSheet({visible, filters, availableCities, onApply, onClose
 
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Section title={t.search.whereGoing}>
-            <View style={styles.chips}>
-              <Chip
-                label={t.search.any}
-                active={!draft.city}
-                onPress={() => patch({city: '', locationTags: [], locationCategory: 'rayon'})}
-              />
-              {availableCities.map(city => (
-                <Chip
-                  key={city.value}
-                  label={`${cityLabel(city.value, language)} ${city.count}`}
-                  active={draft.city === city.value}
-                  // Смена города обнуляет места: районы Габалы в Баку не значат
-                  // ничего, и оставить их значило бы показать пустую выдачу.
-                  onPress={() =>
-                    patch(
-                      draft.city === city.value
-                        ? {city: '', locationTags: [], locationCategory: 'rayon'}
-                        : {city: city.value, locationTags: [], locationCategory: 'rayon'}
-                    )
-                  }
-                />
-              ))}
-            </View>
+            {/* Смена региона обнуляет места: районы Габалы в Баку не значат
+                ничего, и оставить их значило бы показать пустую выдачу. */}
+            <CityPicker
+              value={draft.city}
+              available={availableCities}
+              onChange={city => patch({city, locationTags: [], locationCategory: 'rayon'})}
+            />
           </Section>
 
           {draft.city && locationOptions.length > 0 && (
@@ -249,7 +234,15 @@ export function FilterSheet({visible, filters, availableCities, onApply, onClose
           )}
 
           <Section title={t.search.propertyType}>
-            <View style={styles.chips}>
+            {/* ⚠️ Один ряд с прокруткой вбок, а не перенос по строкам. Девять
+                названий вроде «Recreation center» занимали ТРИ ряда и были
+                главной причиной, по которой лист не помещался в экран.
+                Прокруткой они стоят одной строкой, и ни один не потерян. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.rowScroll}
+            >
               <Chip label={t.search.any} active={!draft.type} onPress={() => patch({type: ''})} />
               {propertyTypes.map(type => (
                 <Chip
@@ -261,7 +254,7 @@ export function FilterSheet({visible, filters, availableCities, onApply, onClose
                   }
                 />
               ))}
-            </View>
+            </ScrollView>
           </Section>
 
           <Section title={t.search.priceRange}>
@@ -384,7 +377,7 @@ export function FilterSheet({visible, filters, availableCities, onApply, onClose
           )}
         </ScrollView>
 
-        <View style={styles.foot}>
+        <View style={[styles.foot, {paddingBottom: insets.bottom + spacing.md}]}>
           <Pressable
             onPress={() => setDraft({...EMPTY_FILTERS, search: draft.search})}
             style={styles.reset}
@@ -497,7 +490,7 @@ const styles = StyleSheet.create({
   },
   headTitle: {fontSize: fontSize.xl, fontWeight: '700', color: colors.text},
   headClose: {fontSize: fontSize.base, color: colors.primary, fontWeight: '600'},
-  body: {padding: spacing.md, gap: spacing.lg, paddingBottom: spacing.xl},
+  body: {padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl},
   section: {gap: spacing.sm},
   sectionTitle: {fontSize: fontSize.base, fontWeight: '600', color: colors.gray700},
   blockHead: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
@@ -526,6 +519,7 @@ const styles = StyleSheet.create({
   tabText: {fontSize: fontSize.xs, fontWeight: '700', color: colors.gray700},
   tabTextActive: {color: colors.white},
   chips: {flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm},
+  rowScroll: {flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.md},
   chip: {
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.sm,

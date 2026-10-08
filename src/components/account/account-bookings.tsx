@@ -1,8 +1,9 @@
 import {useState} from 'react'
 import {Alert, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Image} from 'expo-image'
 import {Link} from 'expo-router'
 
-import type {Booking} from '@birklik/core/types'
+import type {Booking, Property} from '@birklik/core/types'
 
 import {useLanguage} from '@/i18n/language-provider'
 import {cancelBooking, respondToBooking} from '@/services/booking-service'
@@ -13,6 +14,8 @@ type Props = {
   mine: Booking[]
   /** Заявки на его объявления — то, на что ему отвечать. */
   requests: Booking[]
+  /** Объявления по идентификатору — ради снимка и названия в карточке. */
+  properties: Map<string, Property>
   onChanged: () => Promise<void>
 }
 
@@ -25,7 +28,7 @@ type Props = {
  * подбирается по известным значениям с запасным вариантом, а не жёстким
  * перебором — иначе такая запись осталась бы без подписи вовсе.
  */
-export function AccountBookings({mine, requests, onChanged}: Props) {
+export function AccountBookings({mine, requests, properties, onChanged}: Props) {
   const {t} = useLanguage()
 
   if (mine.length === 0 && requests.length === 0) {
@@ -40,7 +43,13 @@ export function AccountBookings({mine, requests, onChanged}: Props) {
             {t.dashboard.bookingRequests} · {requests.length}
           </Text>
           {requests.map(booking => (
-            <BookingRow key={booking.id} booking={booking} incoming onChanged={onChanged} />
+            <BookingRow
+              key={booking.id}
+              booking={booking}
+              property={properties.get(booking.propertyId)}
+              incoming
+              onChanged={onChanged}
+            />
           ))}
         </View>
       )}
@@ -51,7 +60,12 @@ export function AccountBookings({mine, requests, onChanged}: Props) {
             {t.dashboard.bookingMyBookings} · {mine.length}
           </Text>
           {mine.map(booking => (
-            <BookingRow key={booking.id} booking={booking} onChanged={onChanged} />
+            <BookingRow
+              key={booking.id}
+              booking={booking}
+              property={properties.get(booking.propertyId)}
+              onChanged={onChanged}
+            />
           ))}
         </View>
       )}
@@ -61,14 +75,16 @@ export function AccountBookings({mine, requests, onChanged}: Props) {
 
 function BookingRow({
   booking,
+  property,
   incoming,
   onChanged
 }: {
   booking: Booking
+  property?: Property
   incoming?: boolean
   onChanged: () => Promise<void>
 }) {
-  const {t} = useLanguage()
+  const {language, t} = useLanguage()
   const [busy, setBusy] = useState(false)
 
   const status = booking.status as string
@@ -127,9 +143,39 @@ function BookingRow({
         </Text>
       ) : null}
 
+      {/* ⚠️ Раньше здесь стоял голый `#{propertyId}`. По идентификатору
+          понять, к какому дому заявка, нельзя — а владельцу с несколькими
+          объявлениями это первое, что нужно. Снимок узнаётся с одного
+          взгляда, название подтверждает.
+
+          Объявление может не прийти: его могли удалить, а бронь осталась.
+          Тогда показываем то же, что и раньше, — всё лучше пустоты. */}
       <Link href={`/property/${booking.propertyId}`} asChild>
-        <Pressable hitSlop={6}>
-          <Text style={styles.link}>#{booking.propertyId}</Text>
+        <Pressable style={styles.property} hitSlop={6}>
+          {property?.images?.[0] ? (
+            <Image
+              source={{uri: property.images[0]}}
+              style={styles.thumb}
+              contentFit="cover"
+              transition={150}
+            />
+          ) : (
+            <View style={[styles.thumb, styles.thumbEmpty]}>
+              <Text style={styles.thumbEmptyText}>{t.property.gallery}</Text>
+            </View>
+          )}
+          <View style={styles.propertyText}>
+            <Text style={styles.propertyTitle} numberOfLines={2}>
+              {property
+                ? property.title?.[language] || property.title?.az || ''
+                : `#${booking.propertyId}`}
+            </Text>
+            {property ? (
+              <Text style={styles.propertyPlace} numberOfLines={1}>
+                {[property.city, property.district].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
+          </View>
         </Pressable>
       </Link>
 
@@ -193,7 +239,26 @@ const styles = StyleSheet.create({
   badgeRejected: {backgroundColor: '#fdecea'},
   badgeText: {fontSize: fontSize.xs, fontWeight: '600', color: colors.gray700},
   meta: {fontSize: fontSize.sm, color: colors.gray600},
-  link: {fontSize: fontSize.xs, color: colors.primary},
+  // Объявление в карточке брони: снимок слева, название и место справа.
+  property: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.base,
+    backgroundColor: colors.gray100
+  },
+  thumbEmpty: {alignItems: 'center', justifyContent: 'center'},
+  thumbEmptyText: {fontSize: 9, color: colors.gray400, textAlign: 'center'},
+  // ⚠️ `minWidth: 0` обязателен: без него длинное название распирает строку и
+  // выталкивает снимок за край карточки.
+  propertyText: {flex: 1, minWidth: 0, gap: 2},
+  propertyTitle: {fontSize: fontSize.sm, fontWeight: '600', color: colors.text},
+  propertyPlace: {fontSize: fontSize.xs, color: colors.neutral},
   reason: {fontSize: fontSize.sm, color: colors.error, fontStyle: 'italic'},
   actions: {flexDirection: 'row', gap: spacing.sm, paddingTop: spacing.xs},
   button: {

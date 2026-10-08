@@ -1,3 +1,30 @@
+# Плоская раскладка пакетов вместо изолированной.
+#
+# ⚠️ Без этого нативная сборка падает на Windows:
+#
+#   ninja: error: Stat(…/MapLibreReactNativeSpec/ComponentDescriptors.cpp):
+#   Filename longer than 260 characters
+#
+# Причина — прослойка pnpm `.pnpm/<длинное-имя>/node_modules/`. Она съедает
+# восемьдесят символов, и сгенерированные codegen-исходники React Native
+# выходят за предел Windows в 260:
+#
+#   с .pnpm   263 символа   ← на три больше предела
+#   без       183
+#
+# Долго не всплывало, потому что кэши `.cxx` лежали готовыми с давних пор и
+# CMake не перенастраивался. Стоило их удалить — настройка пошла с нуля и
+# упёрлась в предел. 2026-10-06.
+#
+# Это штатное решение для React Native с pnpm на Windows, а не обход.
+# Обратимо: убрать строку и переустановить.
+#
+# ⚠️ Настройка обязана лежать ИМЕННО ЗДЕСЬ. С pnpm 10 она переехала сюда из
+# `.npmrc`, и в `.npmrc` её теперь просто не читают — `pnpm config get
+# node-linker` отвечает `undefined`, установка молча проходит с прежней
+# раскладкой, и понять это можно только по `node_modules/.modules.yaml`.
+nodeLinker: hoisted
+
 allowBuilds:
   '@firebase/util': set this to true or false
   protobufjs: set this to true or false

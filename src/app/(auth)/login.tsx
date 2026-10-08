@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {Alert, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Pressable, StyleSheet, Text, View} from 'react-native'
 import {router} from 'expo-router'
 
 import {authErrorMessage} from '@birklik/core/utils/auth-errors'
@@ -7,6 +7,7 @@ import {authErrorMessage} from '@birklik/core/utils/auth-errors'
 import {useAuth} from '@/auth/auth-provider'
 import {AuthScreen} from '@/components/auth-screen'
 import {FormField} from '@/components/form-field'
+import {PasswordResetSheet} from '@/components/password-reset-sheet'
 import {PrimaryButton} from '@/components/primary-button'
 import {useLanguage} from '@/i18n/language-provider'
 import {errorCode} from '@/lib/error-code'
@@ -20,6 +21,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [resetOpen, setResetOpen] = useState(false)
 
   const submit = async () => {
     setError('')
@@ -40,19 +42,6 @@ export default function LoginScreen() {
       setError(authErrorMessage(errorCode(err), language) ?? t.messages.error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const forgotPassword = async () => {
-    if (!email.trim()) {
-      setError(authErrorMessage('auth/invalid-email', language) ?? t.messages.error)
-      return
-    }
-    try {
-      await resetPassword(email)
-      Alert.alert(t.auth.resetPassword, t.auth.resetLinkSent)
-    } catch (err) {
-      setError(authErrorMessage(errorCode(err), language) ?? t.messages.error)
     }
   }
 
@@ -85,9 +74,19 @@ export default function LoginScreen() {
         textContentType="password"
       />
 
-      <Pressable onPress={forgotPassword} style={styles.forgot} hitSlop={8}>
+      <Pressable onPress={() => setResetOpen(true)} style={styles.forgot} hitSlop={8}>
         <Text style={styles.forgotText}>{t.auth.forgotPassword}</Text>
       </Pressable>
+
+      {/* Адрес спрашивается в окне, а не берётся молча из поля выше: раньше
+          человек не мог проверить, куда ушло письмо. Подробности — в самом
+          окне. */}
+      <PasswordResetSheet
+        visible={resetOpen}
+        initialEmail={email}
+        onSend={resetPassword}
+        onClose={() => setResetOpen(false)}
+      />
 
       {error ? (
         <View style={styles.errorBox}>

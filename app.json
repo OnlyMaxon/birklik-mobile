@@ -2,7 +2,7 @@
   "expo": {
     "name": "Birklik.az",
     "slug": "birklik-mobile",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "birklik",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "az.birklik.app",
-      "versionCode": 11,
+      "versionCode": 12,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",

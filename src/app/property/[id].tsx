@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -10,12 +11,13 @@ import {
   Text,
   View
 } from 'react-native'
-import {Stack, useLocalSearchParams} from 'expo-router'
+import {Stack, router, useLocalSearchParams} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
 import type {Property} from '@birklik/core/types'
 import {isTierActive} from '@birklik/core/utils/premium-helper'
 
+import {useAuth} from '@/auth/auth-provider'
 import {BookingCard} from '@/components/booking-card'
 import {CommentsSection} from '@/components/comments-section'
 import {FavoriteButton} from '@/components/favorite-button'
@@ -32,6 +34,7 @@ const {width} = Dimensions.get('window')
 export default function PropertyScreen() {
   const {id} = useLocalSearchParams<{id: string}>()
   const {language, t} = useLanguage()
+  const {user} = useAuth()
 
   const [property, setProperty] = useState<Property | null>(null)
   const [similar, setSimilar] = useState<Property[]>([])
@@ -86,6 +89,10 @@ export default function PropertyScreen() {
   // приложении не показывалось вовсе, хотя `owner` приходит целиком тем же
   // документом — читали из него один телефон.
   const ownerName = property.owner?.name
+  // Владелец ли смотрящий. На сайте это приходит сверху (`isOwner` в
+  // PropertyDetails), здесь считаем на месте: сервера, который подставил бы
+  // признак, у приложения нет.
+  const isOwner = Boolean(user && property.ownerId && property.ownerId === user.uid)
 
   return (
     <>
@@ -150,6 +157,47 @@ export default function PropertyScreen() {
             <Fact value={`${property.area}`} label={t.property.sqm} />
             <Fact value={String(property.maxGuests)} label={t.property.guests} />
           </View>
+
+          {/* Повышение тарифа — только владельцу и только на своём объявлении,
+              как `OwnerActions` на сайте. Правила видимости те же: VIP не
+              предлагаем тому, у кого уже VIP или премиум; премиум — тому, у
+              кого премиум.
+
+              ⚠️ Кнопки сайта ведут в Azericard, здесь они ведут в наш экран с
+              оплатой через Google Play. Продавать цифровой товар внутри
+              приложения мимо Play запрещено, и копировать поведение сайта
+              буквально было бы нарушением.
+
+              ⚠️ Пока только Android — так же, как вход из «Моих объявлений».
+              В App Store товаров ещё нет; появятся — снимать обе оговорки
+              вместе, иначе два входа разойдутся в поведении. */}
+          {isOwner && Platform.OS === 'android' ? (
+            <View style={styles.ownerActions}>
+              {property.listingTier !== 'vip' && property.listingTier !== 'premium' ? (
+                <Pressable
+                  style={[styles.tierButton, styles.tierVip]}
+                  onPress={() =>
+                    router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+                  }
+                >
+                  <Ionicons name="star" size={15} color={colors.white} />
+                  <Text style={styles.tierText}>VIP</Text>
+                </Pressable>
+              ) : null}
+
+              {property.listingTier !== 'premium' ? (
+                <Pressable
+                  style={[styles.tierButton, styles.tierPremium]}
+                  onPress={() =>
+                    router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+                  }
+                >
+                  <Ionicons name="diamond" size={15} color={colors.white} />
+                  <Text style={styles.tierText}>{t.pricing.premium}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
 
           {description ? (
             <Section title={t.property.description}>
@@ -316,6 +364,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm
   },
   amenityText: {fontSize: fontSize.sm, color: colors.gray700},
+  // Повышение тарифа владельцу: две кнопки в ряд, под ценой и фактами.
+  ownerActions: {flexDirection: 'row', gap: spacing.sm, marginTop: spacing.base},
+  tierButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.base,
+    ...shadow.sm
+  },
+  // Цвета те же, что у значков тарифа на карточке, — чтобы кнопка и значок,
+  // который появится после покупки, читались как одно и то же.
+  tierVip: {backgroundColor: colors.secondary},
+  tierPremium: {backgroundColor: colors.accent},
+  tierText: {color: colors.white, fontSize: fontSize.sm, fontWeight: '700'},
   // Блок «Контакты» — заголовок, имя владельца, кнопка звонка. Порядок тот же,
   // что в карточке брони на сайте.
   owner: {marginTop: spacing.xl, gap: spacing.xs},

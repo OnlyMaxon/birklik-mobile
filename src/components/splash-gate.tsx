@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {Animated, Easing, StyleSheet, useWindowDimensions, View} from 'react-native'
+import {Animated, Easing, StyleSheet, View} from 'react-native'
 import {Image} from 'expo-image'
 import * as SplashScreen from 'expo-splash-screen'
 
@@ -19,16 +19,30 @@ import {colors} from '@/theme/theme'
  * же ширины `NATIVE_WIDTH`. В момент `SplashScreen.hideAsync()` на экране
  * меняется ВСЁ, но человек не видит ничего — кадры совпадают.
  *
- * ⚠️ `NATIVE_WIDTH` обязан совпадать с `imageWidth` в app.json. Разъехались —
- * появится скачок размера в момент подмены.
+ * ⚠️ `NATIVE_WIDTH` обязан совпадать с шириной логотипа на системной заставке.
+ * Разъехались — появится скачок размера в момент подмены.
+ *
+ * ⚠️ Задаёт её НЕ app.json, а `SPLASH_LOGO_DP` в `store/android-res.js`: папка
+ * `android/` правится руками, потому что `expo prebuild` стёр бы подпись и
+ * вычищенный манифест. Значение из app.json до сборки не доезжает вовсе.
  */
-const NATIVE_WIDTH = 150
+const NATIVE_WIDTH = 180
 
-/** Доля ширины экрана, до которой логотип вырастает. */
-const GROWN_SHARE = 0.72
-const GROWN_MAX = 320
-
-const GROW_MS = 520
+/**
+ * ⚠️ Логотип НЕ растёт и не движется — намеренно.
+ *
+ * Сначала накладка вырастала с 180 до 72% ширины экрана. Выглядело это так:
+ * мелкий логотип, через пару секунд он раздувается, потом открывается витрина.
+ * Владелец сказал прямо: нужен крупный СРАЗУ, рост не нравится.
+ *
+ * Рост убран целиком. Остаётся одно растворение, и накладка всё время стоит в
+ * том же размере, что системная заставка, — то есть перехода не видно вовсе.
+ *
+ * ⚠️ Крупнее 186dp логотип с надписью быть не может ФИЗИЧЕСКИ: первый кадр
+ * рисует Android и обрезает его кругом 192dp (расчёт в `store/android-res.js`).
+ * Нарисовать накладку крупнее можно, но тогда вернётся ровно тот скачок, от
+ * которого уходим, — только мгновенный вместо плавного.
+ */
 const FADE_MS = 340
 
 type Props = {
@@ -37,15 +51,11 @@ type Props = {
 }
 
 export function SplashGate({reveal}: Props) {
-  const {width} = useWindowDimensions()
   const [gone, setGone] = useState(false)
 
-  // Анимации заводятся один раз на всё время жизни: пересоздание на каждую
-  // отрисовку оборвало бы начатое движение.
-  const scale = useRef(new Animated.Value(1)).current
+  // Заводится один раз на всё время жизни: пересоздание на каждую отрисовку
+  // оборвало бы начатое движение.
   const opacity = useRef(new Animated.Value(1)).current
-
-  const grown = Math.min(width * GROWN_SHARE, GROWN_MAX)
 
   /**
    * Системную заставку снимает САМА накладка, а не тот, кто её показал.
@@ -63,28 +73,18 @@ export function SplashGate({reveal}: Props) {
   useEffect(() => {
     if (!reveal) return
 
-    Animated.sequence([
-      // Выдох: логотип набирает размер. Замедление к концу, а не равномерно —
-      // равномерное движение глаз читает как рывок.
-      Animated.timing(scale, {
-        toValue: grown / NATIVE_WIDTH,
-        duration: GROW_MS,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: FADE_MS,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true
-      })
-    ]).start(() => {
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: FADE_MS,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true
+    }).start(() => {
       // Снимаем накладку независимо от того, доиграла анимация или её
       // прервали: оборванная оставила бы поверх приложения полупрозрачный
       // белый лист, сквозь который не проходят нажатия.
       setGone(true)
     })
-  }, [reveal, grown, scale, opacity])
+  }, [reveal, opacity])
 
   if (gone) return null
 
@@ -92,7 +92,7 @@ export function SplashGate({reveal}: Props) {
     // Нажатия НЕ пропускаем: пока виден логотип, под ним уже разложен рабочий
     // экран, и случайное касание открыло бы объявление вслепую.
     <View style={styles.sheet}>
-      <Animated.View style={{opacity, transform: [{scale}]}}>
+      <Animated.View style={{opacity}}>
         <Image
           source={require('@/assets/images/logo.png')}
           style={styles.logo}
