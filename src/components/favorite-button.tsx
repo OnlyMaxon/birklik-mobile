@@ -11,7 +11,8 @@ import {colors, radius, shadow} from '@/theme/theme'
 type Props = {
   propertyId: string
   favorites: string[] | undefined
-  size?: 'small' | 'large'
+  /** `mini` — для компактной сетки: там кружок в 36 точек занимает треть карточки. */
+  size?: 'mini' | 'small' | 'large'
 }
 
 // Красный сохранённого состояния взят из `.property-favorite-btn.bookmarked`
@@ -65,18 +66,24 @@ export function FavoriteButton({propertyId, favorites, size = 'small'}: Props) {
   }
 
   const large = size === 'large'
+  const mini = size === 'mini'
 
   return (
     <Pressable
       onPress={press}
-      style={[styles.button, large && styles.buttonLarge, active && styles.buttonActive]}
+      style={[
+        styles.button,
+        large && styles.buttonLarge,
+        mini && styles.buttonMini,
+        active && styles.buttonActive
+      ]}
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={t.buttons.bookmark}
     >
       <Ionicons
         name={active ? 'bookmark' : 'bookmark-outline'}
-        size={large ? 22 : 18}
+        size={large ? 22 : mini ? 13 : 18}
         color={colors.white}
       />
     </Pressable>
@@ -94,5 +101,8 @@ const styles = StyleSheet.create({
     ...shadow.sm
   },
   buttonLarge: {width: 44, height: 44},
+  // Радиус меньше вслед за размером: прежние 20 точек на кружке в 26 дают
+  // почти круг, и значок закладки в нём теряется.
+  buttonMini: {width: 26, height: 26, borderRadius: radius.base},
   buttonActive: {backgroundColor: SAVED}
 })

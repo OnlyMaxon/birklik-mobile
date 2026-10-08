@@ -247,8 +247,10 @@ export function BookingCard({property}: Props) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>{t.property.bookingRequest}</Text>
-
+      {/* ⚠️ Своего заголовка здесь НЕТ намеренно: карточку оборачивает
+          `<Section title={t.property.bookingRequest}>` на странице объявления,
+          и свой заголовок давал «Sorğu göndər» дважды подряд — один над
+          рамкой, другой внутри неё. Видно это стало на снимке для магазина. */}
       <Calendar
         // Пересоздаём при смене языка: подписи заголовка календарь берёт один
         // раз при построении и сам их не обновляет.
@@ -333,7 +335,6 @@ const styles = StyleSheet.create({
     gap: spacing.base
   },
   cardDone: {alignItems: 'center', gap: spacing.sm},
-  cardTitle: {fontSize: fontSize.lg, fontWeight: '700', color: colors.text},
   doneTitle: {fontSize: fontSize.base, fontWeight: '700', color: colors.text, textAlign: 'center'},
   doneBody: {fontSize: fontSize.sm, color: colors.gray600, textAlign: 'center', lineHeight: 20},
   dates: {flexDirection: 'row', gap: spacing.sm},

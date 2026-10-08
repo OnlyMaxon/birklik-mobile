@@ -171,7 +171,24 @@ export default function HomeScreen() {
         numColumns={compact ? 2 : 1}
         columnWrapperStyle={compact ? styles.column : undefined}
         keyExtractor={property => property.id}
-        renderItem={({item}) => <PropertyCard property={item} compact={compact} />}
+        renderItem={({item, index}) => {
+          const card = <PropertyCard property={item} compact={compact} />
+          const lonely =
+            compact && visible.length % 2 === 1 && index === visible.length - 1
+
+          // ⚠️ Нечётный хвост. Последняя карточка остаётся в ряду одна и с
+          // `flex: 1` растягивается во всю ширину — рядом с сеткой из
+          // половинок это читается как поломка вёрстки. Ставим рядом пустое
+          // место такой же доли, и ряд получается как все прочие.
+          return lonely ? (
+            <View style={styles.lastRow}>
+              {card}
+              <View style={styles.half} />
+            </View>
+          ) : (
+            card
+          )
+        }}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
@@ -258,6 +275,8 @@ const styles = StyleSheet.create({
   toggleText: {fontSize: fontSize.xs, fontWeight: '700', color: colors.primary},
   toggleTextActive: {color: colors.white},
   column: {gap: spacing.md},
+  lastRow: {flex: 1, flexDirection: 'row', gap: spacing.md},
+  half: {flex: 1},
   mapWrap: {paddingHorizontal: spacing.md, paddingBottom: spacing.sm},
   list: {paddingHorizontal: spacing.md, paddingBottom: spacing.lg, gap: spacing.md},
   empty: {alignItems: 'center', paddingVertical: spacing.xxl, gap: spacing.sm},

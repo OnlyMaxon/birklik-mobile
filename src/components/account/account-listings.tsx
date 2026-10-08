@@ -1,6 +1,6 @@
 import {useState} from 'react'
 import {ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
-import {Link, router} from 'expo-router'
+import {router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
 import type {Property} from '@birklik/core/types'
@@ -8,6 +8,7 @@ import {isOnDisplay} from '@birklik/core/utils/display'
 import {isTierActive, tierExpiresAt, tierRemainingDays} from '@birklik/core/utils/premium-helper'
 
 import {useAuth} from '@/auth/auth-provider'
+import {CardLink} from '@/components/card-link'
 import {useLanguage} from '@/i18n/language-provider'
 import {deleteOwnProperty} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
@@ -95,81 +96,79 @@ function OwnerListing({property, onDeleted}: {property: Property; onDeleted: () 
     : t.dashboard.activeListing
 
   return (
-    <Link href={`/property/${property.id}`} asChild>
-      <Pressable style={({pressed}) => [styles.card, pressed && styles.cardPressed]}>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {property.title?.[language] || property.title?.az || ''}
-          </Text>
-          {(premium || vip) && (
-            <View style={[styles.tier, premium ? styles.tierPremium : styles.tierVip]}>
-              <Text style={styles.tierText}>{premium ? 'PREMIUM' : 'VIP'}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.cardRow}>
-          <View style={[styles.status, onDisplay ? styles.statusOn : styles.statusOff]}>
-            <Text style={[styles.statusText, onDisplay ? styles.statusTextOn : styles.statusTextOff]}>
-              {label}
-            </Text>
+    <CardLink href={`/property/${property.id}`} style={styles.card}>
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {property.title?.[language] || property.title?.az || ''}
+        </Text>
+        {(premium || vip) && (
+          <View style={[styles.tier, premium ? styles.tierPremium : styles.tierVip]}>
+            <Text style={styles.tierText}>{premium ? 'PREMIUM' : 'VIP'}</Text>
           </View>
-          {typeof property.price?.daily === 'number' ? (
-            <Text style={styles.price}>{property.price.daily} ₼</Text>
-          ) : null}
-        </View>
+        )}
+      </View>
 
-        {/* Срок показываем только у платных: у обычного тарифа его нет,
-            и пустая строка «истекает —» вводила бы в заблуждение. */}
-        {expires ? (
-          <Text style={styles.expiry}>
-            {t.dashboard.planExpires} {expires.slice(0, 10)}
-            {days > 0 ? ` · ${days} ${t.common.days}` : ''}
+      <View style={styles.cardRow}>
+        <View style={[styles.status, onDisplay ? styles.statusOn : styles.statusOff]}>
+          <Text style={[styles.statusText, onDisplay ? styles.statusTextOn : styles.statusTextOff]}>
+            {label}
           </Text>
+        </View>
+        {typeof property.price?.daily === 'number' ? (
+          <Text style={styles.price}>{property.price.daily} ₼</Text>
         ) : null}
+      </View>
 
-        {/* Правка отдельной кнопкой, а не по нажатию на карточку: карточка
-            ведёт на само объявление, и путать эти два перехода нельзя. */}
-        <View style={styles.actions}>
+      {/* Срок показываем только у платных: у обычного тарифа его нет,
+          и пустая строка «истекает —» вводила бы в заблуждение. */}
+      {expires ? (
+        <Text style={styles.expiry}>
+          {t.dashboard.planExpires} {expires.slice(0, 10)}
+          {days > 0 ? ` · ${days} ${t.common.days}` : ''}
+        </Text>
+      ) : null}
+
+      {/* Правка отдельной кнопкой, а не по нажатию на карточку: карточка
+          ведёт на само объявление, и путать эти два перехода нельзя. */}
+      <View style={styles.actions}>
+        <Pressable
+          style={styles.action}
+          onPress={() => router.push({pathname: '/account/edit/[id]', params: {id: property.id}})}
+          hitSlop={6}
+        >
+          <Ionicons name="create-outline" size={15} color={colors.primary} />
+          <Text style={styles.actionText}>{t.dashboard.edit}</Text>
+        </Pressable>
+
+        {/* Продвижение — ТОЛЬКО на Android. В App Store товаров ещё нет, а
+            показывать тарифы без возможности купить нельзя: уводить на оплату
+            на сайте запрещает правило 3.1.1(a), и получился бы тупик. */}
+        {Platform.OS === 'android' ? (
           <Pressable
             style={styles.action}
-            onPress={() => router.push({pathname: '/account/edit/[id]', params: {id: property.id}})}
+            onPress={() =>
+              router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+            }
             hitSlop={6}
           >
-            <Ionicons name="create-outline" size={15} color={colors.primary} />
-            <Text style={styles.actionText}>{t.dashboard.edit}</Text>
+            <Ionicons name="trending-up-outline" size={15} color={colors.primary} />
+            <Text style={styles.actionText}>{t.promote.title}</Text>
           </Pressable>
+        ) : null}
 
-          {/* Продвижение — ТОЛЬКО на Android. В App Store товаров ещё нет, а
-              показывать тарифы без возможности купить нельзя: уводить на оплату
-              на сайте запрещает правило 3.1.1(a), и получился бы тупик. */}
-          {Platform.OS === 'android' ? (
-            <Pressable
-              style={styles.action}
-              onPress={() =>
-                router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
-              }
-              hitSlop={6}
-            >
-              <Ionicons name="trending-up-outline" size={15} color={colors.primary} />
-              <Text style={styles.actionText}>{t.promote.title}</Text>
-            </Pressable>
-          ) : null}
-
-          {/* Удаление своего объявления. На сайте владельцу это доступно с
-              самого начала, в приложении не было вовсе — удалить мог только
-              модератор. */}
-          <Pressable style={styles.action} onPress={confirmRemove} hitSlop={6} disabled={deleting}>
-            {deleting ? (
-              <ActivityIndicator size="small" color={colors.error} />
-            ) : (
-              <Ionicons name="trash-outline" size={15} color={colors.error} />
-            )}
-            <Text style={[styles.actionText, styles.actionDanger]}>{t.buttons.delete}</Text>
-          </Pressable>
-        </View>
-      </Pressable>
-    </Link>
+        {/* Удаление своего объявления. На сайте владельцу это доступно с
+            самого начала, в приложении не было вовсе — удалить мог только
+            модератор. */}
+        <Pressable style={styles.action} onPress={confirmRemove} hitSlop={6} disabled={deleting}>
+          {deleting ? (
+            <ActivityIndicator size="small" color={colors.error} />
+          ) : (
+            <Ionicons name="trash-outline" size={15} color={colors.error} />
+          )}
+          <Text style={[styles.actionText, styles.actionDanger]}>{t.buttons.delete}</Text>
+        </Pressable>
+      </View>
+    </CardLink>
   )
 }
 
@@ -183,7 +182,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     ...shadow.sm
   },
-  cardPressed: {opacity: 0.75},
   cardHead: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   cardTitle: {flex: 1, fontSize: fontSize.base, fontWeight: '600', color: colors.text},
   tier: {paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm},
