@@ -1,7 +1,8 @@
 import {useState} from 'react'
-import {Alert, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Alert, Linking, Pressable, StyleSheet, Text, View} from 'react-native'
 import {Image} from 'expo-image'
 import {Link} from 'expo-router'
+import {Ionicons} from '@expo/vector-icons'
 
 import type {Booking, Property} from '@birklik/core/types'
 
@@ -17,6 +18,17 @@ type Props = {
   /** Объявления по идентификатору — ради снимка и названия в карточке. */
   properties: Map<string, Property>
   onChanged: () => Promise<void>
+}
+
+/**
+ * Звонок гостю из карточки заявки.
+ *
+ * ⚠️ Номер чистится от всего, кроме цифр и плюса. В базе он лежит так, как его
+ * ввёл человек, — с пробелами и скобками, — а часть звонилок на Android такой
+ * `tel:` просто не открывает: ни ошибки, ни набора, нажатие уходит в пустоту.
+ */
+function dial(phone: string) {
+  void Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`)
 }
 
 /**
@@ -88,6 +100,7 @@ function BookingRow({
   const [busy, setBusy] = useState(false)
 
   const status = booking.status as string
+  const guestPhone = booking.userPhone
   const label =
     status === 'approved'
       ? t.dashboard.bookingApproved
@@ -137,10 +150,19 @@ function BookingRow({
       {/* Владельцу показываем, кто просится, — иначе отвечать вслепую.
           Гостю имя и телефон не нужны: это его собственные данные. */}
       {incoming ? (
-        <Text style={styles.meta}>
-          {booking.userName}
-          {booking.userPhone ? ` · ${booking.userPhone}` : ''}
-        </Text>
+        <>
+          <Text style={styles.meta}>{booking.userName}</Text>
+
+          {/* Номер — кнопка, а не строка: владелец отвечает на заявку звонком,
+              и переписывать цифры руками в звонилку он не должен. На сайте
+              это обычная ссылка `tel:`, здесь — то же самое действие. */}
+          {guestPhone ? (
+            <Pressable style={styles.call} onPress={() => dial(guestPhone)} hitSlop={8}>
+              <Ionicons name="call-outline" size={14} color={colors.primary} />
+              <Text style={styles.callText}>{guestPhone}</Text>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
 
       {/* ⚠️ Раньше здесь стоял голый `#{propertyId}`. По идентификатору
@@ -239,6 +261,13 @@ const styles = StyleSheet.create({
   badgeRejected: {backgroundColor: '#fdecea'},
   badgeText: {fontSize: fontSize.xs, fontWeight: '600', color: colors.gray700},
   meta: {fontSize: fontSize.sm, color: colors.gray600},
+  call: {flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 2},
+  callText: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.primary,
+    textDecorationLine: 'underline'
+  },
   // Объявление в карточке брони: снимок слева, название и место справа.
   property: {
     flexDirection: 'row',

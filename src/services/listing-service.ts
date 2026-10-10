@@ -4,7 +4,7 @@ import {getDownloadURL, ref, putFile} from '@react-native-firebase/storage'
 import * as ImageManipulator from 'expo-image-manipulator'
 
 import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
-import {resolveCityQuery} from '@birklik/core/data'
+import {resolveCityQuery, TIER_PHOTO_LIMITS} from '@birklik/core/data'
 
 import {auth, db, storage} from '@/lib/firebase'
 
@@ -29,7 +29,20 @@ import {auth, db, storage} from '@/lib/firebase'
 const MAX_IMAGE_WIDTH = 900
 const MAX_IMAGE_HEIGHT = 675
 const IMAGE_QUALITY = 0.75
-const MAX_IMAGES = 15
+
+/**
+ * Последний предохранитель на число снимков.
+ *
+ * ⚠️ Здесь стояло 15 — число, взятое ниоткуда: сайт всё это время принимал 20
+ * у обычного и VIP, 30 у Premium. Лишние отрезались молча, и человек, купивший
+ * Premium ради тридцати снимков, получал пятнадцать без единого слова.
+ *
+ * Предел ПО ТАРИФУ проверяет форма (`listing-form.tsx`) — там его видно в
+ * счётчике и там же он объясняется ошибкой. Сюда попадает уже отобранное, и
+ * этот потолок — страховка от пути в обход формы, а не рабочее ограничение.
+ * Поэтому он равен наибольшему из возможных.
+ */
+const MAX_IMAGES = TIER_PHOTO_LIMITS.premium
 
 /** Баку — запасной вариант, если геокодер не ответил. Тот же, что на сайте. */
 export const DEFAULT_COORDINATES = {lat: 40.4093, lng: 49.8671}

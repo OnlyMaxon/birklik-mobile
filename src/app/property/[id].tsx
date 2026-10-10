@@ -93,6 +93,11 @@ export default function PropertyScreen() {
   // PropertyDetails), здесь считаем на месте: сервера, который подставил бы
   // признак, у приложения нет.
   const isOwner = Boolean(user && property.ownerId && property.ownerId === user.uid)
+  // Какой тариф ДЕЙСТВУЕТ сейчас. Именно действует: `isTierActive` требует и
+  // совпадения тарифа, и непросроченной даты, а у истёкшего платного поле
+  // `listingTier` остаётся прежним.
+  const premiumActive = isTierActive(property, 'premium')
+  const vipActive = isTierActive(property, 'vip')
 
   return (
     <>
@@ -158,22 +163,34 @@ export default function PropertyScreen() {
             <Fact value={String(property.maxGuests)} label={t.property.guests} />
           </View>
 
-          {/* Повышение тарифа — только владельцу и только на своём объявлении,
-              как `OwnerActions` на сайте. Правила видимости те же: VIP не
-              предлагаем тому, у кого уже VIP или премиум; премиум — тому, у
-              кого премиум.
+          {/* Тарифы — только владельцу и только на своём объявлении.
+              Что показываем, решает ДЕЙСТВУЮЩИЙ тариф, а не поле `listingTier`:
+              у истёкшего платного оно остаётся прежним, и по нему объявление
+              выглядело бы VIP-овским, уже не будучи им.
 
-              ⚠️ Кнопки сайта ведут в Azericard, здесь они ведут в наш экран с
-              оплатой через Google Play. Продавать цифровой товар внутри
-              приложения мимо Play запрещено, и копировать поведение сайта
-              буквально было бы нарушением.
+              обычное или истёкшее   VIP и Premium — обе ступени открыты
+              действует VIP          продлить VIP или перейти на Premium
+              действует Premium      только продлить Premium
 
-              ⚠️ Пока только Android — так же, как вход из «Моих объявлений».
-              В App Store товаров ещё нет; появятся — снимать обе оговорки
-              вместе, иначе два входа разойдутся в поведении. */}
+              ⚠️ Premium-у VIP НЕ предлагается, и это не упущение. Оплата VIP
+              проходит через `applyPaidTier`, а она стирает дату прежнего
+              тарифа: объявление стало бы VIP, а оплаченные дни Premium
+              сгорели бы. Кнопки, после которой человек теряет оплаченное, быть
+              не должно.
+
+              ⚠️ Сайт сейчас ведёт себя иначе: у VIP-объявления он показывает
+              только Premium, а у Premium — вообще ни одной кнопки, то есть
+              продлить его со страницы объявления нельзя. Это расхождение
+              осознанное, решение владельца от 2026-10-10.
+
+              ⚠️ Кнопки сайта ведут в Azericard, здесь — в свой экран с оплатой
+              через Google Play: продавать цифровой товар мимо Play запрещено.
+
+              ⚠️ Пока только Android — как и вход из «Моих объявлений». В App
+              Store товаров ещё нет; появятся — снимать обе оговорки вместе. */}
           {isOwner && Platform.OS === 'android' ? (
             <View style={styles.ownerActions}>
-              {property.listingTier !== 'vip' && property.listingTier !== 'premium' ? (
+              {!premiumActive ? (
                 <Pressable
                   style={[styles.tierButton, styles.tierVip]}
                   onPress={() =>
@@ -181,21 +198,23 @@ export default function PropertyScreen() {
                   }
                 >
                   <Ionicons name="star" size={15} color={colors.white} />
-                  <Text style={styles.tierText}>VIP</Text>
+                  <Text style={styles.tierText}>
+                    {vipActive ? t.promote.extendVip : t.promote.upgradeVip}
+                  </Text>
                 </Pressable>
               ) : null}
 
-              {property.listingTier !== 'premium' ? (
-                <Pressable
-                  style={[styles.tierButton, styles.tierPremium]}
-                  onPress={() =>
-                    router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
-                  }
-                >
-                  <Ionicons name="diamond" size={15} color={colors.white} />
-                  <Text style={styles.tierText}>{t.pricing.premium}</Text>
-                </Pressable>
-              ) : null}
+              <Pressable
+                style={[styles.tierButton, styles.tierPremium]}
+                onPress={() =>
+                  router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+                }
+              >
+                <Ionicons name="diamond" size={15} color={colors.white} />
+                <Text style={styles.tierText}>
+                  {premiumActive ? t.promote.extendPremium : t.promote.upgradePremium}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
 

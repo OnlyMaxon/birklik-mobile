@@ -7,11 +7,24 @@ import {useLanguage} from '@/i18n/language-provider'
 import type {Plan} from '@/services/billing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
+type PaidTier = 'vip' | 'premium'
+
 type Props = {
   plans: Plan[]
   busy: boolean
   error: string
   onPick: (productId: string) => void
+  /**
+   * Какие ступени показывать. Не задано — обе.
+   *
+   * ⚠️ Нужно Premium-объявлению: ему VIP предлагать НЕЛЬЗЯ. Оплата VIP стирает
+   * дату Premium — см. `applyPaidTier` на сервере, — и оплаченные дни сгорят.
+   */
+  tiers?: PaidTier[]
+  /** Подпись в шапке ступени: «Повысить до VIP» или «Продлить VIP». */
+  labels?: Partial<Record<PaidTier, string>>
+  /** Строка под сроками: что именно случится с днями после оплаты. */
+  notes?: Partial<Record<PaidTier, string>>
   /**
    * Режим отметки вместо немедленной покупки.
    *
@@ -23,9 +36,24 @@ type Props = {
   selectedId?: string | null
 }
 
+/** Цвет ступени: VIP синий, Premium оранжевый — как значки на карточках. */
+const TIER_COLOR: Record<PaidTier, string> = {
+  vip: colors.secondary,
+  premium: colors.accent
+}
+
 /**
- * Карточки платных тарифов. Один вид на продвижение существующего объявления и
- * на выбор тарифа при подаче нового — иначе два списка разойдутся в оформлении.
+ * Тарифы — блоком на ступень, а не карточкой на каждый срок.
+ *
+ * ⚠️ Было четыре одинаковые карточки подряд: «VIP 14 дней», «VIP 30 дней»,
+ * «Premium 14», «Premium 30», и под каждой одна строка про возможности. Чем
+ * ступени отличаются, по такому списку понять нельзя — человек платил, не зная,
+ * что покупает. Теперь ступень одна, под ней её возможности целиком, а сроки —
+ * двумя кнопками внутри. Так же устроена сетка тарифов на сайте.
+ *
+ * Перечни возможностей берутся из `pricing.features` в общем пакете — те же
+ * слова, что показывает сайт. Своих тут быть не должно: обещание, которого нет
+ * на сайте, никто не собирался выполнять.
  *
  * Цена показывается ДВУМЯ строками, и это не украшательство.
  *
@@ -39,16 +67,17 @@ type Props = {
  * есть. Эта строка обязательна и убирать её нельзя: у покупателя вне
  * Азербайджана валюта будет своя, и скрывать настоящую сумму перед списанием
  * нечестно, а Google за это ещё и снимает приложение.
- *
- * ⚠️ Раньше здесь стояло «своей цены не считаем», и это было верно: своей цены
- * в приложении не существовало. Теперь она берётся из `TIER_PRICES` в общем
- * пакете — расходиться с сайтом ей нечем. Набивать число здесь по-прежнему
- * нельзя.
- *
- * Названия тарифов и перечни возможностей берутся из `pricing` в общем пакете:
- * те же слова, что на сайте.
  */
-export function PlanPicker({plans, busy, error, onPick, selectedId}: Props) {
+export function PlanPicker({
+  plans,
+  busy,
+  error,
+  onPick,
+  tiers = ['vip', 'premium'],
+  labels,
+  notes,
+  selectedId
+}: Props) {
   const selecting = selectedId !== undefined
   const {t} = useLanguage()
 
@@ -56,64 +85,99 @@ export function PlanPicker({plans, busy, error, onPick, selectedId}: Props) {
     <View style={styles.list}>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {plans.map(plan => (
-        <Pressable
-          key={plan.id}
-          style={({pressed}) => [
-            styles.plan,
-            pressed && styles.planPressed,
-            selecting && selectedId === plan.id && styles.planSelected
-          ]}
-          disabled={busy}
-          onPress={() => onPick(plan.id)}
-        >
-          <View style={styles.head}>
-            <View
-              style={[styles.badge, plan.tier === 'premium' ? styles.badgePremium : styles.badgeVip]}
-            >
-              <Text style={styles.badgeText}>
-                {plan.tier === 'premium' ? t.pricing.premium : t.pricing.vip}
-              </Text>
+      {tiers.map(tier => {
+        // Сроки одной ступени, короткий первым: магазин отдаёт их в своём
+        // порядке, а он не обязан совпадать с ожидаемым.
+        const options = plans.filter(plan => plan.tier === tier).sort((a, b) => a.days - b.days)
+        if (options.length === 0) return null
+
+        const accent = TIER_COLOR[tier]
+        const features: string[] = t.pricing.features[tier]
+
+        return (
+          <View key={tier} style={[styles.block, {borderColor: accent}]}>
+            <View style={[styles.head, {backgroundColor: accent}]}>
+              <Ionicons name="arrow-up-circle" size={22} color={colors.white} />
+              <View style={styles.headText}>
+                <Text style={styles.headTitle}>
+                  {labels?.[tier] ??
+                    (tier === 'premium' ? t.promote.upgradePremium : t.promote.upgradeVip)}
+                </Text>
+                <Text style={styles.headSub}>
+                  {tier === 'premium' ? t.pricing.premiumDesc : t.pricing.vipDesc}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.days}>
-              {plan.days === 14 ? t.pricing.days14 : t.pricing.days30}
-            </Text>
-            <View style={styles.prices}>
-              {(() => {
-                const azn = tierPriceByDays(plan.tier, plan.days)
-                // Цены нет в справочнике — значит завели тариф, о котором пакет
-                // не знает. Показываем одну строку магазина: она всегда верна.
-                return azn === undefined ? null : (
-                  <Text style={styles.price}>{formatAzn(azn)}</Text>
-                )
-              })()}
-              <Text style={styles.storePrice}>
-                {t.pricing.storeCharge}: {plan.price}
-              </Text>
+
+            <View style={styles.body}>
+              <Text style={styles.benefitsTitle}>{t.promote.planBenefits}</Text>
+              {features.map(line => (
+                <View key={line} style={styles.benefit}>
+                  <Ionicons name="checkmark-circle" size={15} color={accent} />
+                  <Text style={styles.benefitText}>{line}</Text>
+                </View>
+              ))}
+
+              <View style={styles.durations}>
+                {options.map(plan => {
+                  const azn = tierPriceByDays(plan.tier, plan.days)
+                  const chosen = selecting && selectedId === plan.id
+
+                  return (
+                    <Pressable
+                      key={plan.id}
+                      style={({pressed}) => [
+                        styles.duration,
+                        pressed && styles.durationPressed,
+                        chosen && {borderColor: accent, borderWidth: 2}
+                      ]}
+                      disabled={busy}
+                      onPress={() => onPick(plan.id)}
+                    >
+                      <Text style={styles.durationDays}>
+                        {plan.days === 14 ? t.pricing.days14 : t.pricing.days30}
+                      </Text>
+
+                      {/* Цены нет в справочнике — значит в магазине завели
+                          тариф, о котором пакет не знает. Показываем одну
+                          строку магазина: она всегда верна. */}
+                      {azn === undefined ? null : (
+                        <Text style={[styles.durationPrice, {color: accent}]}>{formatAzn(azn)}</Text>
+                      )}
+
+                      <Text style={styles.durationStore}>
+                        {t.pricing.storeCharge}: {plan.price}
+                      </Text>
+
+                      {/* В режиме отметки надписи «Купить» нет: платят не
+                          здесь, и обещать оплату по нажатию было бы обманом. */}
+                      {selecting ? (
+                        chosen ? (
+                          <View style={styles.action}>
+                            <Ionicons name="checkmark-circle" size={14} color={accent} />
+                            <Text style={[styles.actionText, {color: accent}]}>
+                              {t.promote.selected}
+                            </Text>
+                          </View>
+                        ) : null
+                      ) : (
+                        <View style={styles.action}>
+                          <Ionicons name="card-outline" size={14} color={accent} />
+                          <Text style={[styles.actionText, {color: accent}]}>
+                            {busy ? t.promote.checking : t.promote.buy}
+                          </Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  )
+                })}
+              </View>
+
+              {notes?.[tier] ? <Text style={styles.note}>{notes[tier]}</Text> : null}
             </View>
           </View>
-
-          <Text style={styles.features}>
-            {plan.tier === 'premium' ? t.pricing.premiumFeatures : t.pricing.vipFeatures}
-          </Text>
-
-          {/* В режиме отметки надписи «Купить» нет: платят не здесь, и обещать
-              оплату по нажатию на карточку было бы обманом. */}
-          {selecting ? (
-            selectedId === plan.id ? (
-              <View style={styles.buy}>
-                <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-                <Text style={styles.buyText}>{t.promote.subtitle}</Text>
-              </View>
-            ) : null
-          ) : (
-            <View style={styles.buy}>
-              <Ionicons name="card-outline" size={16} color={colors.primary} />
-              <Text style={styles.buyText}>{busy ? t.promote.checking : t.promote.buy}</Text>
-            </View>
-          )}
-        </Pressable>
-      ))}
+        )
+      })}
 
       {busy ? <ActivityIndicator color={colors.primary} style={styles.busy} /> : null}
     </View>
@@ -121,30 +185,41 @@ export function PlanPicker({plans, busy, error, onPick, selectedId}: Props) {
 }
 
 const styles = StyleSheet.create({
-  list: {gap: spacing.sm},
+  list: {gap: spacing.base},
   error: {fontSize: fontSize.sm, color: colors.error, lineHeight: 20},
-  plan: {
+  block: {
     backgroundColor: colors.white,
     borderRadius: radius.base,
-    padding: spacing.base,
-    gap: spacing.sm,
+    borderWidth: 1,
+    overflow: 'hidden',
     ...shadow.sm
   },
-  planPressed: {opacity: 0.75},
-  planSelected: {borderWidth: 2, borderColor: colors.primary},
-  head: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
-  badge: {paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.sm},
-  badgePremium: {backgroundColor: colors.accent},
-  badgeVip: {backgroundColor: colors.secondary},
-  badgeText: {color: colors.white, fontSize: 10, fontWeight: '700'},
-  days: {flex: 1, fontSize: fontSize.sm, color: colors.gray700},
-  prices: {alignItems: 'flex-end'},
+  head: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.base},
+  headText: {flex: 1},
+  headTitle: {fontSize: fontSize.base, fontWeight: '700', color: colors.white},
+  headSub: {fontSize: fontSize.xs, color: colors.white, opacity: 0.9},
+  body: {padding: spacing.base, gap: 6},
+  benefitsTitle: {fontSize: fontSize.xs, fontWeight: '700', color: colors.gray600},
+  benefit: {flexDirection: 'row', alignItems: 'flex-start', gap: 6},
+  benefitText: {flex: 1, fontSize: fontSize.xs, color: colors.gray700, lineHeight: 18},
+  durations: {flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm},
+  duration: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    gap: 2
+  },
+  durationPressed: {opacity: 0.75},
+  durationDays: {fontSize: fontSize.xs, color: colors.gray600},
+  durationPrice: {fontSize: fontSize.lg, fontWeight: '700'},
   // Сумма магазина намеренно мелкая и приглушённая: она уточнение к цене
   // тарифа, а не вторая цена. Но она здесь всегда — это то, что спишут.
-  storePrice: {fontSize: 10, color: colors.gray500, marginTop: 1},
-  price: {fontSize: fontSize.base, fontWeight: '700', color: colors.primary},
-  features: {fontSize: fontSize.xs, color: colors.gray500, lineHeight: 18},
-  buy: {flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: spacing.xs},
-  buyText: {fontSize: fontSize.sm, fontWeight: '600', color: colors.primary},
+  durationStore: {fontSize: 10, color: colors.gray500},
+  action: {flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4},
+  actionText: {fontSize: fontSize.xs, fontWeight: '700'},
+  note: {fontSize: 11, color: colors.gray500, lineHeight: 16, marginTop: spacing.xs},
   busy: {marginTop: spacing.sm}
 })

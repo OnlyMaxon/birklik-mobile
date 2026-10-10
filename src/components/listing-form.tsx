@@ -17,6 +17,7 @@ import {
   cities,
   moreFilterOptions,
   nearFilterOptions,
+  photoLimitForTier,
   propertyTypes
 } from '@birklik/core/data'
 import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
@@ -29,8 +30,6 @@ import {PrimaryButton} from '@/components/primary-button'
 import {useLanguage} from '@/i18n/language-provider'
 import type {PickedImage} from '@/services/listing-service'
 import {colors, fontSize, radius, spacing} from '@/theme/theme'
-
-const MAX_IMAGES = 15
 
 export interface ListingFormValues {
   title: string
@@ -159,6 +158,16 @@ export function ListingForm({
 
   const total = existing.length + picked.length
 
+  /**
+   * Сколько снимков разрешено — зависит от ВЫБРАННОГО тарифа.
+   *
+   * ⚠️ Раньше здесь стояло 15 на все тарифы, и лишние снимки отрезались молча
+   * при загрузке. Человек платил за Premium, прикладывал тридцать и получал
+   * пятнадцать, ничего об этом не узнав. Сайт в это же время обещал и принимал
+   * 20 обычному и VIP, 30 — Premium. Теперь число общее, из пакета.
+   */
+  const maxImages = photoLimitForTier(tier)
+
   const pick = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!permission.granted) {
@@ -169,7 +178,7 @@ export function ListingForm({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      selectionLimit: MAX_IMAGES - total,
+      selectionLimit: maxImages - total,
       quality: 1
     })
 
@@ -182,7 +191,7 @@ export function ListingForm({
             width: asset.width,
             height: asset.height
           }))
-        ].slice(0, MAX_IMAGES - existing.length)
+        ].slice(0, maxImages - existing.length)
       )
       setLocalError('')
     }
@@ -246,6 +255,16 @@ export function ListingForm({
     }
     if (!Number(minGuests)) return setLocalError(t.listing.required)
     if (total === 0) return setLocalError(t.listing.minPhotos)
+
+    // ⚠️ Тариф можно понизить уже после того, как снимки набраны: выбрал
+    // Premium, приложил тридцать, передумал и вернулся к обычному. Отрезать
+    // лишнее молча нельзя — это ровно то, от чего уходим. Пусть человек сам
+    // решит, какие снимки убрать.
+    if (total > maxImages) {
+      return setLocalError(
+        tier === 'premium' ? t.listing.maxImagesPremium : t.listing.maxImagesStandard
+      )
+    }
 
     onSubmit({
       title: title.trim(),
@@ -447,7 +466,7 @@ export function ListingForm({
 
         <View>
           <Text style={styles.label}>
-            {t.buttons.uploadPhotos} · {total}/{MAX_IMAGES}
+            {t.buttons.uploadPhotos} · {total}/{maxImages}
           </Text>
           {/* Порядок правится стрелками: первый снимок попадает на карточку в
               выдаче, и владельцы это замечают. На сайте так же — стрелками, а
@@ -475,7 +494,7 @@ export function ListingForm({
               />
             ))}
 
-            {total < MAX_IMAGES ? (
+            {total < maxImages ? (
               <Pressable style={styles.photoAdd} onPress={pick}>
                 <Ionicons name="add" size={26} color={colors.gray400} />
               </Pressable>
@@ -494,10 +513,11 @@ export function ListingForm({
 
             <Chips
               label={t.dashboard.premiumStatus}
-              options={TIERS.map(value => ({
-                value,
-                label: t.pricing?.[value as keyof typeof t.pricing] ?? value
-              }))}
+              // Имена ступеней берём по ключу тарифа напрямую. Приведение к
+              // `keyof typeof t.pricing` было лишним и стало вредным: в
+              // `pricing` появился `features` — не строка, а три списка, — и
+              // подписью чипа мог оказаться объект.
+              options={TIERS.map(value => ({value, label: t.pricing[value]}))}
               selected={[tier]}
               onToggle={value => setTier(value as 'standard' | 'vip' | 'premium')}
             />

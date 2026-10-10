@@ -193,10 +193,13 @@ export default function AddListingScreen() {
                 ) : null}
               </Pressable>
 
+              {/* Подписи здесь — названия ступеней, а не «Повысить до VIP»:
+                  объявление подают впервые, повышать ещё нечего. */}
               <PlanPicker
                 plans={purchase.plans}
                 busy={purchase.busy}
                 error={purchase.error}
+                labels={{vip: t.pricing.vip, premium: t.pricing.premium}}
                 selectedId={plan}
                 onPick={setPlan}
               />
