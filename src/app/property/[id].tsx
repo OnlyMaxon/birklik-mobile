@@ -252,6 +252,12 @@ export default function PropertyScreen() {
                 latitude={property.coordinates.lat}
                 longitude={property.coordinates.lng}
                 label={title}
+                place={[property.city, property.district].filter(Boolean).join(' · ')}
+                price={
+                  typeof property.price?.daily === 'number'
+                    ? `${property.price.daily} ₼ / ${t.property.perNight}`
+                    : undefined
+                }
               />
             </Section>
           ) : null}
