@@ -2,7 +2,7 @@
   "expo": {
     "name": "Birklik.az",
     "slug": "birklik-mobile",
-    "version": "1.0.12",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "birklik",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "az.birklik.app",
-      "versionCode": 14,
+      "versionCode": 15,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
@@ -21,6 +21,23 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/property/"},
+          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/az/property/"},
+          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/ru/property/"},
+          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/en/property/"},
+          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/property/"},
+          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/az/property/"},
+          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/ru/property/"},
+          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/en/property/"}
+          ]
+        }
+      ],
       "predictiveBackGestureEnabled": false,
     "blockedPermissions": [
       "android.permission.RECORD_AUDIO",
