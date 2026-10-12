@@ -4,19 +4,24 @@ import {Stack, router, useLocalSearchParams} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
 import type {Property} from '@birklik/core/types'
+import {isBoostActive} from '@birklik/core/utils/boost-helper'
 import {isTierActive, tierExpiresAt} from '@birklik/core/utils/premium-helper'
 
 import {useAuth} from '@/auth/auth-provider'
+import {BoostPicker} from '@/components/boost-picker'
 import {PlanPicker} from '@/components/plan-picker'
 import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useLanguage} from '@/i18n/language-provider'
-import {getOwnerProperties} from '@/services/property-service'
+import {getBoostRemaining, getOwnerProperties} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 type PaidTier = 'vip' | 'premium'
 
 /** Цвет ступени — тот же, что у значков на карточках и в `PlanPicker`. */
 const TIER_COLOR: Record<PaidTier, string> = {vip: colors.secondary, premium: colors.accent}
+
+/** Цвет подъёма — тот же, что в `BoostPicker` и у кнопки на сайте. */
+const BOOST_COLOR = '#1b7f5a'
 
 /**
  * Продвижение существующего объявления.
@@ -35,6 +40,11 @@ const TIER_COLOR: Record<PaidTier, string> = {vip: colors.secondary, premium: co
  * стал бы VIP, и оплаченные дни сгорели бы. Кнопки, после которой человек
  * теряет оплаченное, быть не должно — вместо неё объяснение, почему её нет.
  *
+ * Подъём (`BoostPicker`) показывается ТОЛЬКО обычному объявлению. Технически он
+ * работает и у платных — поднимает внутри своей полосы, — но VIP и Premium и так
+ * стоят выше всех обычных, и продавать им то, что у них уже есть, мы не станем.
+ * Та же развилка на сайте, в `owner-actions.tsx`.
+ *
  * Достижим только на Android: кнопки, ведущие сюда, на iOS скрыты, пока нет
  * товаров в App Store. Показывать тарифы без возможности купить ни к чему, а
  * уводить на оплату на сайте запрещает правило 3.1.1(a).
@@ -43,7 +53,7 @@ const TIER_COLOR: Record<PaidTier, string> = {vip: colors.secondary, premium: co
  * только своё: что продвигаем, что предлагаем и что показать после оплаты.
  */
 export default function PromoteListingScreen() {
-  const {id} = useLocalSearchParams<{id: string}>()
+  const {id, focus} = useLocalSearchParams<{id: string; focus?: string}>()
   const {language, t} = useLanguage()
   const {user} = useAuth()
 
@@ -53,6 +63,10 @@ export default function PromoteListingScreen() {
   const [doneUntil, setDoneUntil] = useState<string | null>(null)
   /** Какую ступень показать в итоге. */
   const [doneTier, setDoneTier] = useState<PaidTier>('vip')
+  /** Итог подъёма: сколько подъёмов осталось после этой покупки. */
+  const [doneBoost, setDoneBoost] = useState<number | null>(null)
+  /** Остаток незаконченного пакета — для подписи над пакетами. */
+  const [boostsLeft, setBoostsLeft] = useState(0)
   /**
    * На что нажали. Запасной ответ на вопрос «что купили», если перечитать
    * объявление не удалось: без него итог показал бы VIP человеку, купившему
@@ -68,10 +82,21 @@ export default function PromoteListingScreen() {
     return mine.find(item => item.id === id) ?? null
   }, [user, id])
 
-  const purchase = usePurchaseFlow(expiryDate => {
+  const purchase = usePurchaseFlow(result => {
+    // Подъём — не тариф: у него нет срока, и показывать «действует до» по нему
+    // нельзя. Отличаем по ответу сервера, а не по тому, на что нажали:
+    // незавершённая покупка подхватывается при входе на экран, и нажатия тогда
+    // не было вовсе.
+    if (result.kind === 'boost') {
+      setDoneBoost(result.remaining ?? 0)
+      void fetchProperty().then(fresh => {
+        if (fresh) setProperty(fresh)
+      })
+      return
+    }
+
     // Перечитываем объявление: какой тариф в итоге стоит — знает сервер, а не
-    // то, на что нажали. После незавершённой покупки, подхваченной при входе на
-    // экран, нажатия не было вовсе.
+    // то, на что нажали.
     void fetchProperty().then(fresh => {
       if (fresh) setProperty(fresh)
       setDoneTier(
@@ -81,7 +106,7 @@ export default function PromoteListingScreen() {
             : 'vip'
           : (pickedTier.current ?? 'vip')
       )
-      setDoneUntil(expiryDate)
+      setDoneUntil(result.expiryDate)
     })
   })
 
@@ -94,6 +119,9 @@ export default function PromoteListingScreen() {
       const found = await fetchProperty()
       if (!alive) return
       setProperty(found)
+      const left = await getBoostRemaining(id)
+      if (!alive) return
+      setBoostsLeft(left)
       await purchase.prepare()
     }
 
@@ -119,8 +147,43 @@ export default function PromoteListingScreen() {
 
   const premiumActive = property ? isTierActive(property, 'premium') : false
   const vipActive = property ? isTierActive(property, 'vip') : false
+  const boostActive = property ? isBoostActive(property) : false
   const expires = property ? tierExpiresAt(property) : null
   const title = property ? property.title?.[language] || property.title?.az || '' : ''
+
+  // Итог подъёма. Отдельно от итога тарифа: показывать нечего из тарифного —
+  // ни срока, ни перечня возможностей, — зато есть остаток пакета.
+  if (doneBoost !== null) {
+    return (
+      <>
+        <Stack.Screen options={{title: t.boost.title}} />
+        <ScrollView contentContainerStyle={styles.page}>
+          <View style={[styles.doneHead, {backgroundColor: BOOST_COLOR}]}>
+            <Ionicons name="arrow-up-circle" size={40} color={colors.white} />
+            <Text style={styles.doneTitle}>{t.boost.done}</Text>
+            <Text style={styles.doneUntil}>
+              {doneBoost > 0
+                ? t.boost.doneMany.replace('{count}', String(doneBoost))
+                : t.boost.doneOne}
+            </Text>
+          </View>
+
+          {title ? (
+            <Text style={styles.doneProperty} numberOfLines={2}>
+              {title}
+            </Text>
+          ) : null}
+
+          <Pressable
+            style={[styles.backButton, {backgroundColor: BOOST_COLOR}]}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backText}>{t.promote.backToListing}</Text>
+          </Pressable>
+        </ScrollView>
+      </>
+    )
+  }
 
   // Итог оплаты: что человек получил, а не одна дата.
   if (doneUntil) {
@@ -173,6 +236,46 @@ export default function PromoteListingScreen() {
     vip: vipActive ? t.promote.extendVip : t.promote.upgradeVip,
     premium: premiumActive ? t.promote.extendPremium : t.promote.upgradePremium
   }
+
+  /**
+   * Пришли по кнопке подъёма — пакеты подъёма идут первыми.
+   *
+   * Без этого человек, нажавший «İrəli çək», попадал бы на экран, у которого
+   * сверху VIP и Premium, и искал бы пакеты прокруткой. Экран один намеренно:
+   * обе покупки идут одним ходом (`usePurchaseFlow`), и разводить их по двум
+   * экранам значило бы держать две копии самого денежного кода в приложении.
+   */
+  const boostFirst = focus === 'boost'
+
+  // Подъём — только обычному объявлению. Почему, и почему это не жадность: в
+  // заголовке файла.
+  const boostSection =
+    !premiumActive && !vipActive ? (
+      <>
+        {boostActive ? (
+          <View style={styles.boostActive}>
+            <Ionicons name="arrow-up-circle" size={16} color={BOOST_COLOR} />
+            <Text style={styles.boostActiveText}>{t.boost.activeNow}</Text>
+          </View>
+        ) : null}
+
+        <BoostPicker
+          plans={purchase.boostPlans}
+          busy={purchase.busy}
+          remaining={boostsLeft}
+          onPick={productId => {
+            // Ступень не отмечаем: это не тариф, и `pickedTier` к нему не
+            // относится. Что купили, скажет сервер полем `kind`.
+            purchase.start(productId, id ?? '')
+          }}
+        />
+      </>
+    ) : (
+      <View style={styles.warning}>
+        <Ionicons name="information-circle-outline" size={16} color={colors.gray600} />
+        <Text style={styles.warningText}>{t.boost.notForPaid}</Text>
+      </View>
+    )
 
   // Что случится с днями. Продление приписывает их к остатку, переход на
   // Premium остаток VIP не переносит — об этом надо сказать ДО оплаты.
@@ -232,6 +335,8 @@ export default function PromoteListingScreen() {
           </View>
         ) : null}
 
+        {boostFirst ? boostSection : null}
+
         <PlanPicker
           plans={purchase.plans}
           busy={purchase.busy}
@@ -245,6 +350,8 @@ export default function PromoteListingScreen() {
             purchase.start(productId, id ?? '')
           }}
         />
+
+        {boostFirst ? null : boostSection}
       </ScrollView>
     </>
   )
@@ -276,6 +383,15 @@ const styles = StyleSheet.create({
     padding: spacing.sm
   },
   warningText: {flex: 1, fontSize: 11, color: colors.gray600, lineHeight: 16},
+  boostActive: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    backgroundColor: 'rgba(27, 127, 90, 0.08)',
+    borderRadius: radius.sm,
+    padding: spacing.sm
+  },
+  boostActiveText: {flex: 1, fontSize: 11, color: '#156347', fontWeight: '700', lineHeight: 16},
   doneHead: {
     alignItems: 'center',
     gap: spacing.xs,

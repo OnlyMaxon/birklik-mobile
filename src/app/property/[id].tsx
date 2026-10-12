@@ -215,6 +215,26 @@ export default function PropertyScreen() {
                   {premiumActive ? t.promote.extendPremium : t.promote.upgradePremium}
                 </Text>
               </Pressable>
+
+              {/* Подъём — только обычному объявлению: VIP и Premium и так стоят
+                  выше всех обычных. Ведёт в тот же экран, где внизу пакеты
+                  подъёма; сервер отказывает платному тарифу ДО списания денег. */}
+              {!premiumActive && !vipActive ? (
+                <Pressable
+                  style={[styles.tierButton, styles.tierBoost]}
+                  onPress={() =>
+                    router.push({
+                      // `focus` ставит пакеты подъёма первыми на том экране:
+                      // нажавший эту кнопку пришёл не за тарифами.
+                      pathname: '/account/promote/[id]',
+                      params: {id: property.id, focus: 'boost'}
+                    })
+                  }
+                >
+                  <Ionicons name="arrow-up-circle" size={15} color={colors.white} />
+                  <Text style={styles.tierText}>{t.boost.button}</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -404,6 +424,9 @@ const styles = StyleSheet.create({
   // который появится после покупки, читались как одно и то же.
   tierVip: {backgroundColor: colors.secondary},
   tierPremium: {backgroundColor: colors.accent},
+  // Зелёный намеренно не из гаммы тарифов: подъём не ступень выше Premium, а
+  // отдельная услуга. Тот же цвет в `BoostPicker` и у кнопки на сайте.
+  tierBoost: {backgroundColor: '#1b7f5a'},
   tierText: {color: colors.white, fontSize: fontSize.sm, fontWeight: '700'},
   // Блок «Контакты» — заголовок, имя владельца, кнопка звонка. Порядок тот же,
   // что в карточке брони на сайте.

@@ -5,7 +5,6 @@ import {Ionicons} from '@expo/vector-icons'
 
 import {filterProperties} from '@birklik/core/data'
 import type {Property} from '@birklik/core/types'
-import {tierRank} from '@birklik/core/utils/premium-helper'
 
 import {FilterSheet} from '@/components/filter-sheet'
 import {PropertiesMap} from '@/components/properties-map'
@@ -24,8 +23,13 @@ import {colors, fontSize, spacing} from '@/theme/theme'
  * тип, цена и вместимость работают по одним правилам в обоих приложениях, а не
  * по двум похожим.
  *
- * Порядок задаёт `tierRank`: платные выше обычных. На сайте это делают два
- * запроса, здесь достаточно сортировки — выборка и так вся на руках.
+ * Порядок задаёт сама `filterProperties` — тариф, затем подъём, затем время
+ * (`compareListings` в общем пакете). Своей сортировки здесь нет и быть не
+ * должно: ровно такая копия, считавшая один `tierRank`, и теряла бы подъём.
+ *
+ * Сайту для этого нужны ещё и отдельные запросы за платными и поднятыми: его
+ * лента режется курсором по дате, и старое поднятое объявление лежало бы на
+ * третьей странице. Здесь выборка целиком на руках, и сортировки достаточно.
  */
 export default function HomeScreen() {
   const {t} = useLanguage()
@@ -104,7 +108,7 @@ export default function HomeScreen() {
       // разворачивается в 999 и делает верхнюю границу поиска бесконечной.
       maxGuests: filters.minGuests !== null ? '10+' : undefined
     })
-    return [...found].sort((a, b) => tierRank(b) - tierRank(a))
+    return found
   }, [all, filters])
 
   const apply = (next: Filters) => {

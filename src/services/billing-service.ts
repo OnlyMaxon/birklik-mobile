@@ -7,6 +7,8 @@ import {
   type Purchase
 } from 'expo-iap'
 
+import {isBoostPackage, type BoostPackage} from '@birklik/core/data'
+
 import {auth} from '@/lib/firebase'
 
 /**
@@ -31,6 +33,17 @@ import {auth} from '@/lib/firebase'
  */
 export const PLAN_PRODUCTS = ['vip_14', 'vip_30', 'premium_14', 'premium_30'] as const
 
+/**
+ * Товары подъёма. Числа в именах — это количество подъёмов, и они обязаны
+ * совпадать с тремя местами: здесь, в Play Console и в `BOOST_PRODUCTS` на
+ * сервере.
+ *
+ * Отдельным списком от тарифов намеренно: подъём не ступень и срока не имеет.
+ * Смешай их в одном перечне — и `planOf` пришлось бы возвращать то одно, то
+ * другое.
+ */
+export const BOOST_PRODUCTS = ['boost_1', 'boost_3', 'boost_5', 'boost_10'] as const
+
 /** Разбор имени товара на тариф и срок — для подписей на экране. */
 export function planOf(productId: string): {tier: 'vip' | 'premium'; days: 14 | 30} | null {
   const [tier, days] = productId.split('_')
@@ -44,6 +57,21 @@ export interface Plan {
   tier: 'vip' | 'premium'
   days: 14 | 30
   /** Цена строкой из магазина, уже в валюте покупателя. Своей не считаем. */
+  price: string
+}
+
+/** Разбор имени товара подъёма на количество. */
+export function boostOf(productId: string): {count: BoostPackage} | null {
+  const [name, count] = productId.split('_')
+  if (name !== 'boost') return null
+  const parsed = Number(count)
+  return isBoostPackage(parsed) ? {count: parsed} : null
+}
+
+export interface BoostPlan {
+  id: string
+  count: BoostPackage
+  /** Цена строкой из магазина — то, что реально спишет Google. */
   price: string
 }
 
@@ -95,6 +123,27 @@ export async function loadPlans(): Promise<Plan[]> {
 }
 
 /**
+ * Пакеты подъёма с ценами из магазина.
+ *
+ * Отдельный запрос от тарифов, а не один общий: пустой ответ по тарифам и
+ * пустой ответ по подъёмам означают разное. Товары подъёма заводятся в Play
+ * Console позже тарифов, и пока их там нет, тарифы обязаны работать.
+ */
+export async function loadBoostPlans(): Promise<BoostPlan[]> {
+  const products = await fetchProducts({skus: [...BOOST_PRODUCTS], type: 'in-app'})
+
+  const plans: BoostPlan[] = []
+  for (const product of products ?? []) {
+    const parsed = boostOf(product.id)
+    if (!parsed) continue
+    plans.push({id: product.id, count: parsed.count, price: product.displayPrice})
+  }
+
+  // От меньшего пакета к большему: магазин отдаёт товары как ему удобно.
+  return plans.sort((a, b) => a.count - b.count)
+}
+
+/**
  * Открывает окно оплаты Google.
  *
  * ⚠️ Это НЕ промис результата покупки: `requestPurchase` только показывает окно,
@@ -127,9 +176,18 @@ export async function startPurchase(productId: string, propertyId: string): Prom
   })
 }
 
-interface VerifyResult {
+export interface VerifyResult {
   alreadyApplied: boolean
+  /**
+   * Что именно применил сервер. Отличать обязательно: у подъёма нет срока, и
+   * показать по нему «тариф до такого-то числа» значило бы соврать.
+   *
+   * Старые ответы сервера поля не имеют — отсутствие читаем как тариф.
+   */
+  kind?: 'tier' | 'boost'
   expiryDate: string
+  /** Сколько подъёмов осталось в пакете. Ноль у тарифа и у одиночного подъёма. */
+  remaining?: number
 }
 
 /**

@@ -5,11 +5,14 @@ import {ErrorCode, purchaseErrorListener, purchaseUpdatedListener, type Purchase
 import {useLanguage} from '@/i18n/language-provider'
 import {
   connectStore,
+  loadBoostPlans,
   loadPlans,
   pendingPurchases,
   startPurchase,
   verifyAndFinish,
-  type Plan
+  type BoostPlan,
+  type Plan,
+  type VerifyResult
 } from '@/services/billing-service'
 
 /**
@@ -34,6 +37,11 @@ import {
 export interface PurchaseFlow {
   /** Тарифы с ценами из магазина. Пусто на iOS и пока магазин недоступен. */
   plans: Plan[]
+  /**
+   * Пакеты подъёма с ценами из магазина. Пусто там же, где тарифы, и ещё пока
+   * товары подъёма не заведены в Play Console — тарифы при этом работают.
+   */
+  boostPlans: BoostPlan[]
   /** Идёт оплата или проверка чека — кнопки должны быть заперты. */
   busy: boolean
   error: string
@@ -47,21 +55,28 @@ export interface PurchaseFlow {
 }
 
 /**
- * @param onApplied вызывается, когда сервер поставил тариф. Экран решает сам,
- *   что показать и куда уйти: при подаче объявления и при продлении это разные
- *   вещи.
+ * @param onApplied вызывается, когда сервер применил покупку. Экран решает сам,
+ *   что показать и куда уйти: при подаче объявления, при продлении тарифа и
+ *   после подъёма это разные вещи.
+ *
+ *   ⚠️ Получает весь ответ сервера, а не одну дату окончания. Раньше была
+ *   именно дата, и с появлением подъёма этого стало мало: у подъёма срока нет
+ *   вовсе, а незавершённая покупка подхватывается на ЛЮБОМ экране — то есть
+ *   экран подачи объявления может получить ответ про подъём и обязан его
+ *   отличить, иначе показал бы «тариф до 1970-01-01».
  * @param onFailed вызывается, когда оплата не состоялась — отказ, отмена или
  *   непройденная проверка. Нужен подаче объявления: объявление там уже создано
  *   черновиком, и оставлять человека на заполненной форме нельзя — повторная
  *   отправка создала бы второй черновик.
  */
 export function usePurchaseFlow(
-  onApplied: (expiryDate: string) => void,
+  onApplied: (result: VerifyResult) => void,
   onFailed?: () => void
 ): PurchaseFlow {
   const {t} = useLanguage()
 
   const [plans, setPlans] = useState<Plan[]>([])
+  const [boostPlans, setBoostPlans] = useState<BoostPlan[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -80,7 +95,7 @@ export function usePurchaseFlow(
     setError('')
     try {
       const result = await verifyAndFinish(purchase, propertyIdRef.current)
-      appliedRef.current(result.expiryDate)
+      appliedRef.current(result)
     } catch {
       setError(textRef.current.promote.failed)
       failedRef.current?.()
@@ -122,6 +137,13 @@ export function usePurchaseFlow(
       await connectStore()
       const available = await loadPlans()
       setPlans(available)
+
+      // Пакеты подъёма спрашиваем отдельно и их отсутствие ошибкой НЕ считаем:
+      // в Play Console они заводятся позже тарифов, и до этого момента экран
+      // обязан работать — просто без подъёма.
+      const boosts = await loadBoostPlans().catch(() => [] as BoostPlan[])
+      setBoostPlans(boosts)
+
       if (available.length === 0) {
         // Чаще всего это не поломка: отладочная сборка из Metro покупки не
         // проводит, и Google отдаёт ей пустой список.
@@ -150,5 +172,5 @@ export function usePurchaseFlow(
     })
   }, [])
 
-  return {plans, busy, error, start, prepare}
+  return {plans, boostPlans, busy, error, start, prepare}
 }

@@ -51,12 +51,22 @@ export default function AddListingScreen() {
   const paidHere = useRef(false)
 
   const purchase = usePurchaseFlow(
-    expiryDate => {
+    result => {
+      // ⚠️ Сюда может прийти ПОДЪЁМ, хотя на этом экране его не покупают:
+      // незавершённые покупки забираются при открытии любого экрана, и человек
+      // мог оплатить подъём, а приложение закрыть до проверки чека. Тогда
+      // применён подъём, а не тариф, и говорить «тариф до такого-то числа»
+      // значило бы соврать — даты у подъёма нет вовсе.
+      if (result.kind === 'boost') {
+        Alert.alert('', t.boost.done)
+        return
+      }
+
       if (!paidHere.current) {
         // Догнали покупку прошлого сеанса. Объявление тогда уже было создано,
         // тариф теперь поставлен — сообщаем про тариф, а не про создание, и с
         // формы никуда не уводим: человек пришёл подавать новое.
-        Alert.alert('', t.promote.success.replace('{date}', expiryDate.slice(0, 10)))
+        Alert.alert('', t.promote.success.replace('{date}', result.expiryDate.slice(0, 10)))
         return
       }
 
