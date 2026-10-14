@@ -1,17 +1,47 @@
 import {useEffect, useRef, useState} from 'react'
-import {Alert, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Platform, Pressable, StyleSheet, Text, View} from 'react-native'
 import {Stack, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
 import {useAuth} from '@/auth/auth-provider'
 import {ListingForm, type ListingFormValues} from '@/components/listing-form'
 import {PlanPicker} from '@/components/plan-picker'
+import {StatusDialog, type StatusVariant} from '@/components/status-dialog'
+import {SubmitProgress} from '@/components/submit-progress'
 import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useWatermark} from '@/components/use-watermark'
 import {useLanguage} from '@/i18n/language-provider'
 import {planOf} from '@/services/billing-service'
 import {createListing, geocode, uploadImages} from '@/services/listing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
+
+/** Что показать в окне итога. Собирается на месте события, а не в компоненте. */
+type Outcome = {
+  variant: StatusVariant
+  title: string
+  body?: string
+  note?: string
+  support?: boolean
+  primary: {label: string; onPress: () => void}
+  secondary?: {label: string; onPress: () => void}
+  /** Можно ли закрыть окно подложкой и кнопкой «назад». */
+  dismissable?: boolean
+}
+
+/**
+ * Доля сделанного по шагам подачи.
+ *
+ * Числа не ровные намеренно: снимки занимают большую часть времени, и давать им
+ * треть полосы значило бы врать о том, сколько осталось. Место на карте ищется
+ * секунду, документ сохраняется мгновенно — им края.
+ */
+const STEP = {
+  location: 0.08,
+  photosFrom: 0.1,
+  photosTo: 0.75,
+  saving: 0.85,
+  payment: 0.95
+} as const
 
 /**
  * Подача объявления.
@@ -30,6 +60,16 @@ import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
  * ⚠️ Выбор тарифа показывается только на Android. В App Store товаров пока нет, и
  * на iOS подача остаётся бесплатной — показывать тарифы без возможности купить
  * ни к чему.
+ *
+ * ⚠️ Итог показывается своим окном (`StatusDialog`), а не `Alert.alert`. Решение
+ * владельца от 2026-10-14, и дело не в красоте: системное окно умеет заголовок,
+ * строку и кнопку. Человек, который впервые отдал нам полчаса работы и двадцать
+ * снимков, должен понять, что объявление сохранено, что его смотрит человек и
+ * что это не отказ. Строка «На модерации» не объясняет ни одного из трёх.
+ *
+ * ⚠️ И полоса загрузки вместо системного кружка — по той же причине. Двадцать
+ * снимков с водяным знаком это десятки секунд, за которые кружок не отличим от
+ * зависшего приложения; человек жмёт «назад» и теряет всё заполненное.
  */
 export default function AddListingScreen() {
   const {t} = useLanguage()
@@ -38,6 +78,9 @@ export default function AddListingScreen() {
   const {stage, apply} = useWatermark()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  /** Полоса загрузки: доля и подпись шага. `null` — подача не идёт. */
+  const [progress, setProgress] = useState<{value: number; label: string} | null>(null)
+  const [outcome, setOutcome] = useState<Outcome | null>(null)
 
   // Что выбрано: null — бесплатный standard, иначе идентификатор товара.
   const [plan, setPlan] = useState<string | null>(null)
@@ -50,6 +93,27 @@ export default function AddListingScreen() {
   // экране, где ничего не создавали, и увела бы человека из заполненной формы.
   const paidHere = useRef(false)
 
+  // Последнее отправленное, чтобы кнопка «Попробовать снова» в окне ошибки
+  // работала одним нажатием, а не возвращала человека к кнопке подачи.
+  const lastValues = useRef<ListingFormValues | null>(null)
+
+  const toListings = () => {
+    setOutcome(null)
+    router.replace('/account/listings')
+  }
+
+  /** Объявление создано и ушло к модератору — главный успешный исход экрана. */
+  const showModerationDone = () =>
+    setOutcome({
+      variant: 'success',
+      title: t.dialog.moderationTitle,
+      body: t.dialog.moderationBody,
+      note: t.dialog.moderationNote,
+      primary: {label: t.dialog.toListings, onPress: toListings}
+      // Окно намеренно не закрывается ничем, кроме кнопки: форма под ним
+      // заполнена, и вторая отправка создала бы второе объявление.
+    })
+
   const purchase = usePurchaseFlow(
     result => {
       // ⚠️ Сюда может прийти ПОДЪЁМ, хотя на этом экране его не покупают:
@@ -58,7 +122,13 @@ export default function AddListingScreen() {
       // применён подъём, а не тариф, и говорить «тариф до такого-то числа»
       // значило бы соврать — даты у подъёма нет вовсе.
       if (result.kind === 'boost') {
-        Alert.alert('', t.boost.done)
+        setOutcome({
+          variant: 'success',
+          title: t.boost.done,
+          body: t.boost.doneOne,
+          primary: {label: t.buttons.close, onPress: () => setOutcome(null)},
+          dismissable: true
+        })
         return
       }
 
@@ -66,15 +136,19 @@ export default function AddListingScreen() {
         // Догнали покупку прошлого сеанса. Объявление тогда уже было создано,
         // тариф теперь поставлен — сообщаем про тариф, а не про создание, и с
         // формы никуда не уводим: человек пришёл подавать новое.
-        Alert.alert('', t.promote.success.replace('{date}', result.expiryDate.slice(0, 10)))
+        setOutcome({
+          variant: 'success',
+          title: t.promote.title,
+          body: t.promote.success.replace('{date}', result.expiryDate.slice(0, 10)),
+          primary: {label: t.buttons.close, onPress: () => setOutcome(null)},
+          dismissable: true
+        })
         return
       }
 
       // Тариф поставлен сервером, объявление вышло из черновика и ушло к
-      // модератору — тот же текст, что у бесплатной подачи.
-      Alert.alert(t.dashboard.listingAdded, t.dashboard.pending, [
-        {text: t.buttons.close, onPress: () => router.replace('/account/listings')}
-      ])
+      // модератору — тот же итог, что у бесплатной подачи.
+      showModerationDone()
     },
     () => {
       // Не наша покупка — значит и объявления сейчас не создавали. Сообщение об
@@ -84,10 +158,17 @@ export default function AddListingScreen() {
       // Оплата не состоялась, а объявление уже создано черновиком. Оставлять
       // человека на заполненной форме НЕЛЬЗЯ: вторая отправка создала бы второй
       // черновик. Уводим в список, где черновик виден и где его можно оплатить
-      // кнопкой продвижения.
-      Alert.alert(t.dashboard.listingAdded, t.promote.failed, [
-        {text: t.buttons.close, onPress: () => router.replace('/account/listings')}
-      ])
+      // кнопкой продвижения — про это и говорит приписка.
+      //
+      // Поддержка здесь обязательна: речь о деньгах, и человек должен иметь
+      // куда написать, не разыскивая наши контакты по сайту.
+      setOutcome({
+        variant: 'error',
+        title: t.promote.failed,
+        note: t.dialog.moderationNote,
+        support: true,
+        primary: {label: t.dialog.toListings, onPress: toListings}
+      })
     }
   )
 
@@ -98,8 +179,11 @@ export default function AddListingScreen() {
   }, [])
 
   const submit = async (values: ListingFormValues) => {
+    lastValues.current = values
     setSaving(true)
     setError('')
+    setOutcome(null)
+    setProgress({value: STEP.location, label: t.dialog.stepLocation})
     try {
       // Точка, поставленная на карте, важнее найденной по адресу: человек
       // уточнил её руками. Не ставил — выясняет геокодер по адресу и городу,
@@ -108,7 +192,21 @@ export default function AddListingScreen() {
       const coordinates =
         values.coordinates ??
         (await geocode([values.address, values.city].filter(Boolean).join(', ')))
-      const urls = await uploadImages(values.newImages, apply)
+
+      const urls = await uploadImages(values.newImages, apply, (done, total) => {
+        if (total === 0) {
+          setProgress({value: STEP.photosTo, label: t.dialog.stepSaving})
+          return
+        }
+        setProgress({
+          value: STEP.photosFrom + (STEP.photosTo - STEP.photosFrom) * (done / total),
+          label: t.dialog.stepPhotos
+            .replace('{done}', String(done))
+            .replace('{total}', String(total))
+        })
+      })
+
+      setProgress({value: STEP.saving, label: t.dialog.stepSaving})
 
       const chosen = plan ? planOf(plan) : null
 
@@ -150,21 +248,49 @@ export default function AddListingScreen() {
         // можно потом кнопкой продвижения. Так же ведёт себя сайт — черновик не
         // удаляется при отказе от оплаты.
         paidHere.current = true
+        setProgress({value: STEP.payment, label: t.dialog.stepPayment})
         purchase.start(plan, propertyId)
         return
       }
 
-      Alert.alert(t.dashboard.listingAdded, t.dashboard.pending, [
-        {text: t.buttons.close, onPress: () => router.replace('/account/listings')}
-      ])
+      showModerationDone()
     } catch {
       setError(t.listing.createdFailed)
+      // ⚠️ Объявление к этому моменту НЕ создано: `createListing` — последнее
+      // ожидание в кладке, и до него дело не дошло. Значит повтор безопасен и
+      // второго объявления не наделает.
+      setOutcome({
+        variant: 'error',
+        title: t.dialog.errorTitle,
+        body: t.dialog.errorBody,
+        note: t.dialog.errorNote,
+        support: true,
+        primary: {
+          label: t.dialog.retry,
+          onPress: () => {
+            setOutcome(null)
+            const again = lastValues.current
+            if (again) void submit(again)
+          }
+        },
+        secondary: {label: t.buttons.close, onPress: () => setOutcome(null)},
+        dismissable: true
+      })
     } finally {
       setSaving(false)
+      setProgress(null)
     }
   }
 
   const showPlans = Platform.OS === 'android' && purchase.plans.length > 0
+
+  // Полоса держится и на проверке чека, но только если платили здесь: при
+  // открытии экрана `prepare()` проверяет чужую незавершённую покупку, и полоса
+  // подачи объявления там была бы не к месту.
+  const verifying = purchase.busy && paidHere.current
+  // Под открытым окном итога полоса ни к чему: подача уже кончилась, и два
+  // окна друг на друге читались бы как незаконченное действие.
+  const showProgress = (progress !== null || verifying) && outcome === null
 
   return (
     <>
@@ -217,6 +343,28 @@ export default function AddListingScreen() {
           ) : null
         }
       />
+
+      {/* На проверке чека подпись берётся не из шагов подачи: это та же
+          проверка, о которой говорит список тарифов, и текст у неё свой. */}
+      <SubmitProgress
+        visible={showProgress}
+        progress={progress?.value ?? STEP.payment}
+        label={progress?.label ?? t.promote.checking}
+      />
+
+      {outcome ? (
+        <StatusDialog
+          visible
+          variant={outcome.variant}
+          title={outcome.title}
+          body={outcome.body}
+          note={outcome.note}
+          support={outcome.support}
+          primary={outcome.primary}
+          secondary={outcome.secondary}
+          onRequestClose={outcome.dismissable ? () => setOutcome(null) : undefined}
+        />
+      ) : null}
 
       {/* Вид для наложения водяного знака: рисуется за краем экрана,
           нужен только чтобы снять с него кадр. */}

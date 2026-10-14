@@ -217,18 +217,17 @@ export default function PropertyScreen() {
               </Pressable>
 
               {/* Подъём — только обычному объявлению: VIP и Premium и так стоят
-                  выше всех обычных. Ведёт в тот же экран, где внизу пакеты
-                  подъёма; сервер отказывает платному тарифу ДО списания денег. */}
+                  выше всех обычных. Сервер думает так же и отказывает такому
+                  платежу ДО списания денег (`initiatePayment`).
+
+                  ⚠️ Ведёт на СВОЙ экран, а не на продвижение. До 2026-10-14
+                  вела туда же, где тарифы, с параметром `focus`, и человек,
+                  пришедший за подъёмом, читал условия VIP и Premium. */}
               {!premiumActive && !vipActive ? (
                 <Pressable
                   style={[styles.tierButton, styles.tierBoost]}
                   onPress={() =>
-                    router.push({
-                      // `focus` ставит пакеты подъёма первыми на том экране:
-                      // нажавший эту кнопку пришёл не за тарифами.
-                      pathname: '/account/promote/[id]',
-                      params: {id: property.id, focus: 'boost'}
-                    })
+                    router.push({pathname: '/account/boost/[id]', params: {id: property.id}})
                   }
                 >
                   <Ionicons name="arrow-up-circle" size={15} color={colors.white} />
@@ -409,13 +408,29 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm
   },
   amenityText: {fontSize: fontSize.sm, color: colors.gray700},
-  // Повышение тарифа владельцу: две кнопки в ряд, под ценой и фактами.
-  ownerActions: {flexDirection: 'row', gap: spacing.sm, marginTop: spacing.base},
+  // Кнопки владельцу под ценой и фактами: VIP, Premium и подъём.
+  //
+  // ⚠️ `flexWrap` здесь обязателен. Кнопок стало ТРИ, и в один ряд они не
+  // влезают: «Premium-a yüksəlt» и «İrəli çək» вместе шире экрана, и третья
+  // кнопка уезжала за край — её просто не было видно. Перенос раскладывает их
+  // по две: две платные ступени в строку, подъём во всю ширину под ними.
+  ownerActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.base
+  },
   tierButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.base,
+    // Половина ширины минус промежуток. `flexGrow` дотягивает одиночную кнопку
+    // до полной ширины — у Premium-объявления она на странице одна.
+    flexBasis: '47%',
+    flexGrow: 1,
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: radius.base,
     ...shadow.sm
@@ -427,7 +442,15 @@ const styles = StyleSheet.create({
   // Зелёный намеренно не из гаммы тарифов: подъём не ступень выше Premium, а
   // отдельная услуга. Тот же цвет в `BoostPicker` и у кнопки на сайте.
   tierBoost: {backgroundColor: '#1b7f5a'},
-  tierText: {color: colors.white, fontSize: fontSize.sm, fontWeight: '700'},
+  // `flexShrink` и перенос вместо обрезки: азербайджанские подписи длиннее
+  // русских, и «Premium-a yüksəlt» в узкой кнопке обрезалось бы на середине.
+  tierText: {
+    flexShrink: 1,
+    color: colors.white,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    textAlign: 'center'
+  },
   // Блок «Контакты» — заголовок, имя владельца, кнопка звонка. Порядок тот же,
   // что в карточке брони на сайте.
   owner: {marginTop: spacing.xl, gap: spacing.xs},

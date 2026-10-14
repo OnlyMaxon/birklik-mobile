@@ -195,14 +195,28 @@ export async function uploadImages(
    * `useWatermark`. Без него снимки уйдут без знака и станут заметно отличаться
    * от загруженных с сайта.
    */
-  watermark?: (image: PickedImage) => Promise<string>
+  watermark?: (image: PickedImage) => Promise<string>,
+  /**
+   * Сколько снимков готово из скольких. Зовётся после каждого — по этим числам
+   * экран подачи рисует полосу загрузки.
+   *
+   * ⚠️ Доля настоящая намеренно. Снимок с водяным знаком на небыстром телефоне
+   * обрабатывается секунды, двадцать снимков — десятки секунд, и всё это время
+   * системный кружок не отличим от зависшего приложения. Бегунок «по таймеру»
+   * был бы хуже: он обещает срок, которого никто не обещал.
+   */
+  onProgress?: (done: number, total: number) => void
 ): Promise<string[]> {
   const userId = auth.currentUser?.uid
   if (!userId) throw new Error('not-authenticated')
 
   const urls: string[] = []
+  // Лишние снимки отрезаются ниже, поэтому считаем по тому же срезу: иначе
+  // полоса встала бы на 15 из 20 и не доехала никогда.
+  const queue = images.slice(0, MAX_IMAGES)
+  onProgress?.(0, queue.length)
 
-  for (const image of images.slice(0, MAX_IMAGES)) {
+  for (const image of queue) {
     const ratio = Math.min(
       MAX_IMAGE_WIDTH / image.width,
       MAX_IMAGE_HEIGHT / image.height,
@@ -266,6 +280,7 @@ export async function uploadImages(
     // Storage без токена отбивает App Check. На чтении адрес всё равно
     // переписывается — см. `withImageUrls`.
     urls.push(await getDownloadURL(reference))
+    onProgress?.(urls.length, queue.length)
   }
 
   return urls
