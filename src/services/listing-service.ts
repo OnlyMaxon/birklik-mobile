@@ -492,6 +492,14 @@ export async function updateListingAsModerator(
     listingTier: edit.listingTier,
     isFeatured: edit.listingTier === 'premium',
     ...expiry,
+    // Кто правил. Нужно журналу изменений тарифа на сервере: триггер
+    // `auditTierChanges` видит, что ступень или дата поменялись, но вошедшего у
+    // него нет — автор приходит только отсюда.
+    //
+    // ⚠️ Этот экран правит тариф и даты РУКАМИ, наравне с редактором модератора
+    // на сайте, и без этого поля правка из приложения попадала бы в журнал с
+    // «автор неизвестен» — как будто её сделали через консоль Firebase.
+    updatedBy: auth.currentUser?.uid ?? '',
     updatedAt: new Date().toISOString()
   })
 }
