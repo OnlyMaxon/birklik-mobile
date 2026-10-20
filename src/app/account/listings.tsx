@@ -6,6 +6,7 @@ import type {Property} from '@birklik/core/types'
 
 import {useAuth} from '@/auth/auth-provider'
 import {AccountListings} from '@/components/account/account-listings'
+import {BlockedNotice} from '@/components/blocked-notice'
 import {useLanguage} from '@/i18n/language-provider'
 import {getOwnerProperties} from '@/services/property-service'
 import {colors, spacing} from '@/theme/theme'
@@ -55,6 +56,7 @@ export default function ListingsScreen() {
         >
           {/* Удалённое объявление исчезает не само: список держится в
               состоянии экрана, и после удаления его надо перечитать. */}
+          <BlockedNotice />
           <AccountListings listings={listings} onDeleted={load} />
         </ScrollView>
       )}

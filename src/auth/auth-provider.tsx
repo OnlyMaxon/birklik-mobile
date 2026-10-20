@@ -43,6 +43,17 @@ export interface Profile {
   email: string
   phone: string
   avatar?: string
+  /**
+   * Блокировка модератором.
+   *
+   * ⚠️ Запрет держится НЕ на этом поле: его делают правила Firestore (по заявке
+   * `blocked` в токене) и проверка на сервере в комментариях и оценках. Поле
+   * нужно одной полосе в кабинете — чтобы человек прочитал причину, а не
+   * решил, что приложение сломалось. Подправить его из приложения нельзя:
+   * правила держат поля `blocked*` закрытыми даже владельцу профиля.
+   */
+  blocked?: boolean
+  blockedReason?: string
 }
 
 interface AuthValue {
@@ -148,7 +159,12 @@ export function AuthProvider({children}: {children: ReactNode}) {
           // зарегистрировался раньше, такой адрес остался в базе.
           avatar: isPlaceholderAvatar(data.avatar as string | undefined)
             ? undefined
-            : (data.avatar as string | undefined)
+            : (data.avatar as string | undefined),
+          // ⚠️ Профиль собирается по полям, и всё неперечисленное здесь
+          // теряется. Признак блокировки надо провести явно, иначе полоса с
+          // причиной не покажется никогда.
+          blocked: data.blocked === true,
+          blockedReason: (data.blockedReason as string) || ''
         })
       } catch {
         // Документа может не быть, если регистрация оборвалась между созданием

@@ -8,6 +8,7 @@ import {ListingForm, type ListingFormValues} from '@/components/listing-form'
 import {PlanPicker} from '@/components/plan-picker'
 import {StatusDialog, type StatusVariant} from '@/components/status-dialog'
 import {SubmitProgress} from '@/components/submit-progress'
+import {BlockedNotice} from '@/components/blocked-notice'
 import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useWatermark} from '@/components/use-watermark'
 import {useLanguage} from '@/i18n/language-provider'
@@ -302,7 +303,12 @@ export default function AddListingScreen() {
         error={error}
         onSubmit={submit}
         header={
-          showPlans ? (
+          <>
+            {/* Полоса блокировки — выше тарифов: узнать о запрете надо ДО
+                того, как заполнишь анкету и получишь отказ при сохранении. */}
+            <BlockedNotice />
+
+            {showPlans ? (
             <View style={styles.plans}>
               <Text style={styles.plansTitle}>{t.pricing.plans}</Text>
 
@@ -340,7 +346,8 @@ export default function AddListingScreen() {
                 onPick={setPlan}
               />
             </View>
-          ) : null
+            ) : null}
+          </>
         }
       />
 

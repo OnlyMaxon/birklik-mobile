@@ -13,7 +13,7 @@ import {deleteObject, ref} from '@react-native-firebase/storage'
 import type {Booking, Comment, CommentReport, Property} from '@birklik/core/types'
 import {storagePathFromImageSource} from '@birklik/core/utils/images'
 
-import {db, storage} from '@/lib/firebase'
+import {auth, db, storage} from '@/lib/firebase'
 
 /**
  * Модераторка.
@@ -260,4 +260,81 @@ export async function closeReport(reportId: string): Promise<void> {
     status: 'closed',
     resolvedAt: new Date().toISOString()
   })
+}
+
+/**
+ * Человек в разделе «Люди» модераторки.
+ *
+ * Своим типом, а не общим `User` из пакета: тому не нужна дата регистрации, а
+ * здесь она единственный способ отличить двух Расимов друг от друга.
+ */
+export interface ModeratedUser {
+  id: string
+  name: string
+  email: string
+  phone: string
+  avatar?: string
+  createdAt: string
+  blocked?: boolean
+  blockedReason?: string
+  blockedAt?: string
+}
+
+/**
+ * Все люди, свежие сверху.
+ *
+ * ⚠️ Порядок считается в памяти, а не запросом. `orderBy('createdAt')` молча
+ * ВЫБРАСЫВАЕТ документы, у которых поля нет вовсе, — на сайте так один профиль
+ * из ста тридцати четырёх не показывался в списке совсем. Тот же капкан уже
+ * обойдён в `getAllBookings`.
+ */
+export async function getAllUsers(): Promise<ModeratedUser[]> {
+  const snapshot = await getDocs(collection(db, 'users'))
+  return snapshot.docs
+    .map(document => ({id: document.id, ...document.data()}) as ModeratedUser)
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+}
+
+const BLOCK_CALLABLE = 'https://europe-west1-birklik-65289.cloudfunctions.net/setUserBlocked'
+
+/**
+ * Блокировка и разблокировка человека.
+ *
+ * ⚠️ Единственное действие модераторки, которое НЕ делается записью в Firestore.
+ * Блокировка ставит заявку `blocked` в токен, отзывает выданные токены и
+ * снимает объявления с витрины — это умеет только Admin SDK. Правила и вовсе
+ * запрещают клиенту писать поля `blocked*` кому угодно, включая себя.
+ *
+ * Та же функция зовётся с сайта: логика живёт на сервере в одном экземпляре,
+ * и разъехаться двум клиентам не на чем.
+ *
+ * Обращение прямым POST, как в `account-service.ts` и `billing-service.ts`:
+ * вызываемая функция — обычный запрос с токеном входа в заголовке, и ещё один
+ * нативный модуль ради неё не нужен.
+ */
+export async function setUserBlocked(
+  userId: string,
+  blocked: boolean,
+  reason: string
+): Promise<{listings: number}> {
+  const user = auth.currentUser
+  if (!user) throw new Error('not-authenticated')
+
+  const token = await user.getIdToken()
+
+  const response = await fetch(BLOCK_CALLABLE, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({data: {userId, blocked, reason}})
+  })
+
+  const body = (await response.json().catch(() => null)) as
+    | {result?: {listings?: number}; error?: {status?: string}}
+    | null
+
+  if (!response.ok || !body?.result) {
+    throw new Error(body?.error?.status ?? `block-failed-${response.status}`)
+  }
+
+  return {listings: body.result.listings ?? 0}
 }

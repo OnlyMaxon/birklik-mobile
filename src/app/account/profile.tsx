@@ -1,6 +1,7 @@
 import {KeyboardAvoidingView, ScrollView, StyleSheet} from 'react-native'
 import {Stack} from 'expo-router'
 
+import {BlockedNotice} from '@/components/blocked-notice'
 import {AccountProfile} from '@/components/account/account-profile'
 import {useLanguage} from '@/i18n/language-provider'
 import {colors, spacing} from '@/theme/theme'
@@ -22,6 +23,7 @@ export default function ProfileScreen() {
         behavior="padding"
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <BlockedNotice />
           <AccountProfile />
         </ScrollView>
       </KeyboardAvoidingView>

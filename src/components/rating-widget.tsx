@@ -56,7 +56,11 @@ export function RatingWidget({property}: Props) {
         setMessage(t.property.rateSaved)
       } else {
         setMessage(
-          result.error === 'not-booked' ? t.property.onlyRateBooked : t.property.rateError
+          result.error === 'blocked'
+            ? t.errors.blocked
+            : result.error === 'not-booked'
+              ? t.property.onlyRateBooked
+              : t.property.rateError
         )
       }
     } catch {

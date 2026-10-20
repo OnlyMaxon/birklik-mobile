@@ -67,7 +67,9 @@ export function CommentsSection({property}: Props) {
         setComments(current => [result.comment, ...current])
         setText('')
       } else {
-        setError(t.messages.error)
+        // Отказ блокировкой объясняем словами: человек и так не понимает, почему
+        // кнопка не работает, а «ошибка» отправила бы его в поддержку.
+        setError(result.error === 'blocked' ? t.errors.blocked : t.messages.error)
       }
     } catch {
       setError(t.messages.error)
