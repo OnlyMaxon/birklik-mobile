@@ -9,7 +9,10 @@ import {
 
 import {isBoostPackage, type BoostPackage} from '@birklik/core/data'
 
-import {auth} from '@/lib/firebase'
+import {Platform} from 'react-native'
+import {doc, setDoc} from '@react-native-firebase/firestore'
+
+import {auth, db} from '@/lib/firebase'
 
 /**
  * Покупка тарифа через Google Play.
@@ -77,6 +80,18 @@ export interface BoostPlan {
 
 const CALLABLE =
   'https://europe-west1-birklik-65289.cloudfunctions.net/verifyPlayPurchase'
+
+/**
+ * Проверка покупки у Apple — СВОЯ функция, а не та же.
+ *
+ * Доказательства оплаты у магазинов разной природы: у Google мы отдаём серверу
+ * токен, и он спрашивает о нём Google; у Apple `purchaseToken` — это уже
+ * подписанная Apple квитанция, и сервер проверяет подпись у себя. Одна функция
+ * на две кассы означала бы ветку «а чей это чек» внутри неё, причём решающую
+ * судьбу денег по догадке.
+ */
+const APPLE_CALLABLE =
+  'https://europe-west1-birklik-65289.cloudfunctions.net/verifyApplePurchase'
 
 let connected = false
 
@@ -157,9 +172,49 @@ export async function loadBoostPlans(): Promise<BoostPlan[]> {
  * Google. Это же спасает прерванную покупку: если приложение закроют до
  * проверки, объявление всё равно известно.
  */
+/**
+ * UUID версии 4 для `appAccountToken`.
+ *
+ * ⚠️ **Формат обязателен.** StoreKit принимает в это поле только UUID: отдай
+ * ему «prop-123» — и значение молча выбросится, квитанция приедет без привязки,
+ * а дыра «убили процесс после оплаты» откроется снова и незаметно.
+ *
+ * ⚠️ Берётся из `Math.random`, и это НЕ лень. Нативного источника случайности в
+ * приложении нет (`expo-crypto` не установлен), а каждый новый нативный модуль
+ * означает пересборку и новый способ сломать сборку. Криптографическая стойкость
+ * здесь и не нужна: UUID — это КЛЮЧ К ЗАПИСИ, а не пароль. Угадавший чужой UUID
+ * не получит ничего: чтобы он вообще попал в квитанцию, надо заплатить своими
+ * деньгами, а сервер сверяет владельца намерения с вошедшим и отказывает.
+ */
+function uuidV4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+    const value = (Math.random() * 16) | 0
+    // Версия (4) уже в шаблоне; здесь задаётся вариант: старшие биты 10.
+    return (char === 'x' ? value : (value & 0x3) | 0x8).toString(16)
+  })
+}
+
 export async function startPurchase(productId: string, propertyId: string): Promise<void> {
   const uid = auth.currentUser?.uid
   if (!uid) throw new Error('not-authenticated')
+
+  // ⚠️ У Apple НЕТ аналога `obfuscatedProfileId`, и это главное различие касс.
+  // Google хранит номер объявления внутри покупки и возвращает его серверу —
+  // этим 2026-10-10 закрыли дыру «убили процесс после оплаты → приложение
+  // забыло номер → деньги списаны, тариф не поставлен». У Apple в покупку можно
+  // положить только UUID, поэтому номер кладём В БАЗУ заранее, а в покупку —
+  // ключ к нему. Запись делается ДО открытия окна оплаты: после него может уже
+  // не быть ни экрана, ни процесса.
+  let appAccountToken: string | undefined
+  if (Platform.OS === 'ios') {
+    appAccountToken = uuidV4()
+    await setDoc(doc(db, 'purchaseIntents', appAccountToken), {
+      userId: uid,
+      propertyId,
+      productId,
+      createdAt: new Date().toISOString()
+    })
+  }
 
   await requestPurchase({
     type: 'in-app',
@@ -171,7 +226,7 @@ export async function startPurchase(productId: string, propertyId: string): Prom
         obfuscatedAccountId: uid,
         obfuscatedProfileId: propertyId
       },
-      apple: {sku: productId}
+      apple: {sku: productId, appAccountToken}
     }
   })
 }
@@ -212,7 +267,7 @@ export async function verifyAndFinish(purchase: Purchase, propertyId: string): P
   if (!purchaseToken) throw new Error('no-purchase-token')
 
   const token = await user.getIdToken()
-  const response = await fetch(CALLABLE, {
+  const response = await fetch(Platform.OS === 'ios' ? APPLE_CALLABLE : CALLABLE, {
     method: 'POST',
     headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
     body: JSON.stringify({
@@ -225,8 +280,12 @@ export async function verifyAndFinish(purchase: Purchase, propertyId: string): P
     | null
 
   if (!response.ok || !body?.result) {
-    // Товар НЕ расходуем. Либо сервер до Google не дошёл и повтор пройдёт, либо
-    // покупка не настоящая — в обоих случаях подтверждать её нельзя.
+    // Товар НЕ расходуем. Либо сервер до магазина не дошёл и повтор пройдёт,
+    // либо покупка не настоящая — в обоих случаях подтверждать её нельзя.
+    //
+    // ⚠️ На iOS это ещё важнее: неподтверждённую покупку Apple отдаёт
+    // приложению снова при каждом запуске, и возврат по ней остаётся возможен.
+    // Подтвердить без выдачи — значит отнять у человека и товар, и возврат.
     throw new Error(body?.error?.status ?? `verify-failed-${response.status}`)
   }
 
@@ -249,6 +308,14 @@ export async function verifyAndFinish(purchase: Purchase, propertyId: string): P
  * объявление.
  */
 export async function pendingPurchases(): Promise<Purchase[]> {
-  const purchases = await getAvailablePurchases()
+  // ⚠️ `onlyIncludeActiveItemsIOS: false` задано ЯВНО и держит на себе всю
+  // защиту от обрыва на iOS. «Действующими» StoreKit считает то, что человек
+  // продолжает иметь: непотребляемые товары и живые подписки. Наши тарифы и
+  // подъёмы — РАСХОДУЕМЫЕ, в этот список они не попадают. Оставь умолчание — и
+  // незавершённая покупка здесь просто не появится: деньги списаны, тариф не
+  // поставлен, и никакой ошибки никто не увидит.
+  //
+  // На Android флаг игнорируется, поэтому ветки по платформе нет.
+  const purchases = await getAvailablePurchases({onlyIncludeActiveItemsIOS: false})
   return (purchases ?? []).filter(p => Boolean(p.purchaseToken))
 }

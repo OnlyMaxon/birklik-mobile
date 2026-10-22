@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View} from 'react-native'
+import {ActivityIndicator, Alert, Pressable, StyleSheet, Text, View} from 'react-native'
 import {router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -140,21 +140,21 @@ function OwnerListing({property, onDeleted}: {property: Property; onDeleted: () 
           <Text style={styles.actionText}>{t.dashboard.edit}</Text>
         </Pressable>
 
-        {/* Продвижение — ТОЛЬКО на Android. В App Store товаров ещё нет, а
-            показывать тарифы без возможности купить нельзя: уводить на оплату
-            на сайте запрещает правило 3.1.1(a), и получился бы тупик. */}
-        {Platform.OS === 'android' ? (
-          <Pressable
-            style={styles.action}
-            onPress={() =>
-              router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
-            }
-            hitSlop={6}
-          >
-            <Ionicons name="trending-up-outline" size={15} color={colors.primary} />
-            <Text style={styles.actionText}>{t.promote.title}</Text>
-          </Pressable>
-        ) : null}
+        {/* Продвижение — на обеих платформах с 2026-10-21. Прежде стояло
+            «только Android»: в App Store не было товаров, а показывать тарифы
+            без возможности купить нельзя — уводить на оплату на сайте запрещает
+            правило 3.1.1(a), и вышел бы тупик. Теперь товары есть у обоих, и
+            условие убрано целиком, а не заменено на истину. */}
+        <Pressable
+          style={styles.action}
+          onPress={() =>
+            router.push({pathname: '/account/promote/[id]', params: {id: property.id}})
+          }
+          hitSlop={6}
+        >
+          <Ionicons name="trending-up-outline" size={15} color={colors.primary} />
+          <Text style={styles.actionText}>{t.promote.title}</Text>
+        </Pressable>
 
         {/* Удаление своего объявления. На сайте владельцу это доступно с
             самого начала, в приложении не было вовсе — удалить мог только

@@ -69,6 +69,17 @@ export interface PurchaseFlow {
  *   черновиком, и оставлять человека на заполненной форме нельзя — повторная
  *   отправка создала бы второй черновик.
  */
+/**
+ * Платформы, у которых есть магазин.
+ *
+ * ⚠️ Список, а не `!== 'web'`: приложение собирается ещё и в веб-вариант, и там
+ * нативного магазина нет вовсе. Проверка «не андроид» жила здесь до выхода в
+ * App Store — тогда у Apple не было ни учётной записи, ни товаров. Снято
+ * 2026-10-21 вместе с появлением `verifyApplePurchase` на сервере: оставить её
+ * значило бы, что на iPhone кнопки оплаты есть, а покупка молча не начинается.
+ */
+const STORE_PLATFORMS = ['android', 'ios']
+
 export function usePurchaseFlow(
   onApplied: (result: VerifyResult) => void,
   onFailed?: () => void
@@ -105,7 +116,9 @@ export function usePurchaseFlow(
   }, [])
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return
+    // Слушатели поднимаются на ОБЕИХ платформах с 2026-10-21: касс теперь две,
+    // и у обеих результат покупки приходит событием, а не ответом на вызов.
+    if (!STORE_PLATFORMS.includes(Platform.OS)) return
 
     const bought = purchaseUpdatedListener(purchase => {
       void apply(purchase)
@@ -129,9 +142,10 @@ export function usePurchaseFlow(
   }, [apply])
 
   const prepare = useCallback(async () => {
-    // На iOS товаров ещё нет: нет учётной записи Apple. Магазин не трогаем,
-    // список тарифов остаётся пустым, и экран это покажет как недоступность.
-    if (Platform.OS !== 'android') return
+    // Магазин есть только на телефонах. На вебе (приложение собирается и в
+    // веб-вариант) обращаться к нему нечем, и список тарифов останется пустым —
+    // экран покажет это как недоступность.
+    if (!STORE_PLATFORMS.includes(Platform.OS)) return
 
     try {
       await connectStore()

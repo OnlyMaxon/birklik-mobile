@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {Platform, Pressable, StyleSheet, Text, View} from 'react-native'
+import {Pressable, StyleSheet, Text, View} from 'react-native'
 import {Stack, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -283,7 +283,10 @@ export default function AddListingScreen() {
     }
   }
 
-  const showPlans = Platform.OS === 'android' && purchase.plans.length > 0
+  // Тарифы показываем, когда магазин их вернул, — на любой платформе. Проверки
+  // «только андроид» здесь больше нет: в App Store товары появились, а список
+  // тарифов и так пуст, если магазин ничего не отдал.
+  const showPlans = purchase.plans.length > 0
 
   // Полоса держится и на проверке чека, но только если платили здесь: при
   // открытии экрана `prepare()` проверяет чужую незавершённую покупку, и полоса

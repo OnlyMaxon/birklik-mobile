@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Dimensions,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -186,9 +185,11 @@ export default function PropertyScreen() {
               ⚠️ Кнопки сайта ведут в Azericard, здесь — в свой экран с оплатой
               через Google Play: продавать цифровой товар мимо Play запрещено.
 
-              ⚠️ Пока только Android — как и вход из «Моих объявлений». В App
-              Store товаров ещё нет; появятся — снимать обе оговорки вместе. */}
-          {isOwner && Platform.OS === 'android' ? (
+              ⚠️ С 2026-10-21 кнопки видны и на iOS: в App Store появились те же
+              товары, а на сервере — `verifyApplePurchase`. До этого стояла
+              оговорка «только Android», и снимать её надо было одновременно
+              здесь и в «Моих объявлениях» — что и сделано. */}
+          {isOwner ? (
             <View style={styles.ownerActions}>
               {!premiumActive ? (
                 <Pressable
