@@ -9,7 +9,14 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "az.birklik.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "icon": "./assets/images/icon-ios.png",
+      "buildNumber": "1",
+      "associatedDomains": ["applinks:birklik.az"],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Elanınıza şəkil əlavə etmək üçün Birklik.az foto kitabxananıza giriş istəyir."
+      }
     },
     "android": {
       "package": "az.birklik.app",
@@ -49,6 +56,11 @@
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
+    },
+    "locales": {
+      "az": "./assets/locales/az.json",
+      "ru": "./assets/locales/ru.json",
+      "en": "./assets/locales/en.json"
     },
     "plugins": [
       "expo-router",
