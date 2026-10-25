@@ -12,7 +12,9 @@
       "supportsTablet": false,
       "icon": "./assets/images/icon-ios.png",
       "buildNumber": "1",
-      "associatedDomains": ["applinks:birklik.az"],
+      "associatedDomains": [
+        "applinks:birklik.az"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Elanınıza şəkil əlavə etmək üçün Birklik.az foto kitabxananıza giriş istəyir."
@@ -32,26 +34,61 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
-          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/property/"},
-          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/az/property/"},
-          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/ru/property/"},
-          {"scheme": "https", "host": "birklik.az", "pathPrefix": "/en/property/"},
-          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/property/"},
-          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/az/property/"},
-          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/ru/property/"},
-          {"scheme": "http", "host": "birklik.az", "pathPrefix": "/en/property/"}
+            {
+              "scheme": "https",
+              "host": "birklik.az",
+              "pathPrefix": "/property/"
+            },
+            {
+              "scheme": "https",
+              "host": "birklik.az",
+              "pathPrefix": "/az/property/"
+            },
+            {
+              "scheme": "https",
+              "host": "birklik.az",
+              "pathPrefix": "/ru/property/"
+            },
+            {
+              "scheme": "https",
+              "host": "birklik.az",
+              "pathPrefix": "/en/property/"
+            },
+            {
+              "scheme": "http",
+              "host": "birklik.az",
+              "pathPrefix": "/property/"
+            },
+            {
+              "scheme": "http",
+              "host": "birklik.az",
+              "pathPrefix": "/az/property/"
+            },
+            {
+              "scheme": "http",
+              "host": "birklik.az",
+              "pathPrefix": "/ru/property/"
+            },
+            {
+              "scheme": "http",
+              "host": "birklik.az",
+              "pathPrefix": "/en/property/"
+            }
           ]
         }
       ],
       "predictiveBackGestureEnabled": false,
-    "blockedPermissions": [
-      "android.permission.RECORD_AUDIO",
-      "android.permission.SYSTEM_ALERT_WINDOW",
-      "android.permission.ACCESS_FINE_LOCATION",
-      "android.permission.ACCESS_COARSE_LOCATION"
-    ]
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -92,6 +129,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5423d87b-91de-44a1-b297-ddd2058a407e"
+      }
+    },
+    "owner": "onlymaxons-team"
   }
 }
