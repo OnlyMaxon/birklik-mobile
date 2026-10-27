@@ -12,6 +12,9 @@
       "supportsTablet": false,
       "icon": "./assets/images/icon-ios.png",
       "buildNumber": "2",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "associatedDomains": [
         "applinks:birklik.az"
       ],
