@@ -109,7 +109,14 @@
           "imageWidth": 150
         }
       ],
-      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/app",
+        {
+          "ios": {
+            "disableSPM": true
+          }
+        }
+      ],
       "@react-native-firebase/auth",
       "@react-native-firebase/messaging",
       "@react-native-firebase/app-check",
