@@ -11,7 +11,7 @@
       "bundleIdentifier": "az.birklik.app",
       "supportsTablet": false,
       "icon": "./assets/images/icon-ios.png",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "entitlements": {
         "aps-environment": "production"
       },
