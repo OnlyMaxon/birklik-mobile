@@ -10,6 +10,7 @@ import {useAuth} from '@/auth/auth-provider'
 import {PlanPicker} from '@/components/plan-picker'
 import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useLanguage} from '@/i18n/language-provider'
+import {STORE_NAME} from '@/services/billing-service'
 import {getOwnerProperties} from '@/services/property-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
@@ -254,7 +255,7 @@ export default function PromoteListingScreen() {
     <>
       <Stack.Screen options={{title: t.promote.title}} />
       <ScrollView contentContainerStyle={styles.page}>
-        <Text style={styles.subtitle}>{t.promote.subtitle}</Text>
+        <Text style={styles.subtitle}>{t.promote.subtitle.replace('{store}', STORE_NAME)}</Text>
 
         {/* Что продвигается и что у него сейчас. Без этого человек не уверен,
             что платит за то объявление, которое открывал. */}

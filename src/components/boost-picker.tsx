@@ -4,7 +4,7 @@ import {Ionicons} from '@expo/vector-icons'
 import {BOOST_PRICES, formatAzn, type BoostPackage} from '@birklik/core/data'
 
 import {useLanguage} from '@/i18n/language-provider'
-import type {BoostPlan} from '@/services/billing-service'
+import {STORE_NAME, type BoostPlan} from '@/services/billing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 type Props = {
@@ -39,12 +39,20 @@ function perBoost(count: BoostPackage): string {
  *
  * Цена, как и у тарифов, показывается ДВУМЯ строками, и это не украшательство:
  * сверху манаты из общего пакета — та же сумма, что на сайте, — снизу мелко то,
- * что **реально спишет Google**, строкой из магазина. Вторая строка
- * обязательна: у покупателя вне Азербайджана валюта своя, и скрывать настоящую
- * сумму перед списанием нечестно, а Google за это снимает приложение.
+ * что **реально спишет магазин**, строкой из самого магазина. Вторая строка
+ * обязательна: скрывать настоящую сумму перед списанием нечестно, и оба
+ * магазина за это снимают приложение.
  *
- * Пустой список означает, что товары подъёма ещё не заведены в Play Console или
- * сборка не из магазина. Тогда блока нет вовсе — показывать цены без
+ * ⚠️ **На iOS расхождение не редкость, а правило.** Маната у Apple нет вовсе:
+ * Азербайджан отнесён к «Rest of World», и витрина там торгует в долларах. То
+ * есть сверху всегда будет «15 ₼», а снизу «App Store спишет: $8.99».
+ *
+ * ⚠️ Название магазина берётся из `STORE_NAME`, а не из словаря: до
+ * 2026-10-27 оно было вписано в переводы, и на айфоне читалось «Google Play
+ * спишет».
+ *
+ * Пустой список означает, что товары подъёма ещё не заведены в консоли магазина
+ * или сборка не из магазина. Тогда блока нет вовсе — показывать цены без
  * возможности купить ни к чему.
  */
 export function BoostPicker({plans, busy, onPick}: Props) {
@@ -97,7 +105,7 @@ export function BoostPicker({plans, busy, onPick}: Props) {
             </Text>
 
             <Text style={styles.packageStore}>
-              {t.pricing.storeCharge}: {plan.price}
+              {t.pricing.storeCharge.replace('{store}', STORE_NAME)}: {plan.price}
             </Text>
 
             <View style={styles.action}>

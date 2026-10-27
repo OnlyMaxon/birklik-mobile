@@ -4,7 +4,7 @@ import {Ionicons} from '@expo/vector-icons'
 import {formatAzn, tierPriceByDays} from '@birklik/core/data'
 
 import {useLanguage} from '@/i18n/language-provider'
-import type {Plan} from '@/services/billing-service'
+import {STORE_NAME, type Plan} from '@/services/billing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
 type PaidTier = 'vip' | 'premium'
@@ -146,7 +146,7 @@ export function PlanPicker({
                       )}
 
                       <Text style={styles.durationStore}>
-                        {t.pricing.storeCharge}: {plan.price}
+                        {t.pricing.storeCharge.replace('{store}', STORE_NAME)}: {plan.price}
                       </Text>
 
                       {/* В режиме отметки надписи «Купить» нет: платят не
