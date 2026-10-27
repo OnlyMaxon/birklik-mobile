@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {ActivityIndicator, StyleSheet, Text, View} from 'react-native'
+import {ActivityIndicator, Platform, StyleSheet, Text, View} from 'react-native'
 import {Stack} from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import {StatusBar} from 'expo-status-bar'
@@ -103,6 +103,12 @@ export default function RootLayout() {
               headerTitleStyle: {fontWeight: '600', color: colors.text},
               headerShadowVisible: true,
               contentStyle: {backgroundColor: colors.background},
+              // ⚠️ Без этого iOS подписывает стрелку «назад» названием
+              // ПРЕДЫДУЩЕГО экрана, и в кабинете рядом со стрелкой читалось
+              // `Index` — имя маршрута главной. На Android подписи у стрелки
+              // нет вовсе, поэтому вылезло это только на живом айфоне.
+              // Настройка iOS-овская, Android её просто не замечает.
+              headerBackButtonDisplayMode: 'minimal',
               // Язык, уведомления и учётная запись в шапке на всех экранах.
               // Отдельного раздела настроек нет, кабинет открывается той же
               // кнопкой. Порядок как на сайте: язык, колокольчик, учётная запись.
@@ -119,14 +125,34 @@ export default function RootLayout() {
               name="index"
               options={{
                 // Логотип вместо надписи — как в шапке сайта.
-                headerTitle: () => <HeaderLogo />,
-                headerTitleAlign: 'left',
+                //
+                // ⚠️ **Слева он оказывается РАЗНЫМИ способами на двух
+                // платформах, и это не прихоть.** `headerTitleAlign` в типах
+                // native-stack помечен дословно: «Not supported on iOS. It's
+                // always center on iOS and cannot be changed». То есть на
+                // айфоне эта строка молча ничего не делает — логотип повисал
+                // по центру, что и было видно на живой сборке 2026-10-27.
+                //
+                // Единственное место, которое iOS действительно отдаёт левому
+                // краю, — `headerLeft`. Туда логотип и кладём, а заголовок
+                // оставляем пустым. Android же выравнивает заголовок сам, и
+                // трогать его незачем: сборка 17 в магазине выглядит верно.
+                ...(Platform.OS === 'ios'
+                  ? {headerTitle: () => null, headerLeft: () => <HeaderLogo />}
+                  : {
+                      headerTitle: () => <HeaderLogo />,
+                      headerTitleAlign: 'left' as const,
+                      headerLeft: () => null
+                    }),
                 // ⚠️ Стрелка «назад» на главном экране обязана отсутствовать.
                 // Expo Router рисует её, если в стопке что-то есть, — а после
                 // прогулки по объявлениям она там всегда есть. Возвращаться с
                 // главного некуда: это корень, и стрелка обманывала.
-                headerBackVisible: false,
-                headerLeft: () => null
+                //
+                // На iOS её вытесняет сам логотип в `headerLeft`, но настройку
+                // оставляем: она отвечает за намерение, а не за побочный эффект
+                // чужой правки.
+                headerBackVisible: false
               }}
             />
             {/* Заголовок ставит сама страница — там название объявления. */}
