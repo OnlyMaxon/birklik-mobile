@@ -1,3 +1,4 @@
 {
-  "NSPhotoLibraryUsageDescription": "Birklik.az просит доступ к фотографиям, чтобы вы могли добавить снимки к объявлению."
+  "NSPhotoLibraryUsageDescription": "Birklik.az просит доступ к фотографиям, чтобы вы могли добавить снимки к объявлению.",
+  "NSLocationWhenInUseUsageDescription": "Разрешение на геопозицию может потребоваться, чтобы показать карту рядом с вами. Birklik.az не собирает и не хранит ваше местоположение."
 }

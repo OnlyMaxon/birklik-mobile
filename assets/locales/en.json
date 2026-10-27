@@ -1,3 +1,4 @@
 {
-  "NSPhotoLibraryUsageDescription": "Birklik.az needs access to your photos so you can add pictures to your listing."
+  "NSPhotoLibraryUsageDescription": "Birklik.az needs access to your photos so you can add pictures to your listing.",
+  "NSLocationWhenInUseUsageDescription": "Location access may be requested to show the map near you. Birklik.az does not collect or store your location."
 }
