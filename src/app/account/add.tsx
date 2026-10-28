@@ -12,7 +12,7 @@ import {BlockedNotice} from '@/components/blocked-notice'
 import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useWatermark} from '@/components/use-watermark'
 import {useLanguage} from '@/i18n/language-provider'
-import {planOf} from '@/services/billing-service'
+import {STORE_NAME, planOf} from '@/services/billing-service'
 import {createListing, geocode, uploadImages} from '@/services/listing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
@@ -165,7 +165,7 @@ export default function AddListingScreen() {
       // куда написать, не разыскивая наши контакты по сайту.
       setOutcome({
         variant: 'error',
-        title: t.promote.failed,
+        title: t.promote.failed.replace('{store}', STORE_NAME),
         note: t.dialog.moderationNote,
         support: true,
         primary: {label: t.dialog.toListings, onPress: toListings}

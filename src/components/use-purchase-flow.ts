@@ -4,6 +4,7 @@ import {ErrorCode, purchaseErrorListener, purchaseUpdatedListener, type Purchase
 
 import {useLanguage} from '@/i18n/language-provider'
 import {
+  STORE_NAME,
   connectStore,
   loadBoostPlans,
   loadPlans,
@@ -108,7 +109,7 @@ export function usePurchaseFlow(
       const result = await verifyAndFinish(purchase, propertyIdRef.current)
       appliedRef.current(result)
     } catch {
-      setError(textRef.current.promote.failed)
+      setError(textRef.current.promote.failed.replace('{store}', STORE_NAME))
       failedRef.current?.()
     } finally {
       setBusy(false)
@@ -130,7 +131,7 @@ export function usePurchaseFlow(
       // сообщить экрану надо и об отмене — при подаче объявления черновик уже
       // создан, и экрану есть что с этим делать.
       if (err.code !== ErrorCode.UserCancelled) {
-        setError(textRef.current.promote.failed)
+        setError(textRef.current.promote.failed.replace('{store}', STORE_NAME))
       }
       failedRef.current?.()
     })
