@@ -20,7 +20,13 @@ import {
   photoLimitForTier,
   propertyTypes
 } from '@birklik/core/data'
-import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
+import type {
+  Amenity,
+  ListingTier,
+  LocationCategory,
+  Property,
+  PropertyType
+} from '@birklik/core/types'
 
 import {CityLocationPicker} from '@/components/city-location-picker'
 import {FormField} from '@/components/form-field'
@@ -82,6 +88,19 @@ type Props = {
    * модераторкой, значило бы подключать магазин там, где он не нужен.
    */
   header?: ReactNode
+  /**
+   * Тариф, ВЫБРАННЫЙ в надстройке, но ещё не оплаченный. Нужен ровно для
+   * одного — предела снимков.
+   *
+   * ⚠️ Без него предел брался из `property.listingTier`, а при подаче его нет
+   * вовсе: тариф оставался `standard`. Человек выбирал Premium, читал прямо
+   * под кнопкой «До 30 фото» из `pricing.features`, и упирался в двадцать.
+   * Сайт в это же время давал тридцать (`use-listing-editor.ts`), потому что
+   * там выбранный тариф лежит в самой записи редактора. Найдено владельцем
+   * 2026-11-08 проверкой руками; типы молчали — предел считался из значения,
+   * которое просто не менялось.
+   */
+  plannedTier?: ListingTier
 }
 
 const STATUSES = ['active', 'pending', 'inactive', 'draft']
@@ -95,10 +114,12 @@ const TIERS: Array<'standard' | 'vip' | 'premium'> = ['standard', 'vip', 'premiu
  * объявление, поданное из одной, не прошло бы правку в другой. На сайте это
  * тоже одна форма (`listing-editor.tsx`) с разными правами.
  *
- * ⚠️ Выбора тарифа у владельца НЕТ ни при подаче, ни при правке: платные тарифы
- * требуют оплаты, а вести на неё из приложения запрещает правило Apple 3.1.1.
- * Модератору тариф доступен — так на сайте выдают премиум после оплаты вне
- * Azericard.
+ * ⚠️ Чипов тарифа у владельца НЕТ: ступень даётся оплатой, а не выбором в форме.
+ * Модератору они доступны — так на сайте выдают премиум после оплаты вне
+ * Azericard. Но ВЫБРАННЫЙ при подаче тариф на форму всё же влияет — приходит
+ * пропом `plannedTier` и поднимает предел снимков. Прежний текст здесь обещал,
+ * что тариф формы не касается вовсе, и из-за этого предел считался по
+ * неизменному `standard`.
  */
 export function ListingForm({
   property,
@@ -107,7 +128,8 @@ export function ListingForm({
   saving,
   error,
   onSubmit,
-  header
+  header,
+  plannedTier
 }: Props) {
   const {t, language} = useLanguage()
 
@@ -159,6 +181,17 @@ export function ListingForm({
   const total = existing.length + picked.length
 
   /**
+   * Тариф, по которому считается предел снимков.
+   *
+   * ⚠️ `tier` — это состояние ФОРМЫ, и менять его может только модератор своими
+   * чипами. При подаче объявления владельцем он навсегда остаётся `standard`:
+   * выбор тарифа живёт в надстройке над формой (`add.tsx`), в другом состоянии.
+   * Поэтому выбранное приходит отдельным пропом и имеет перевес. Иначе Premium
+   * выбран, «До 30 фото» написано тут же под кнопкой, а предел двадцать.
+   */
+  const effectiveTier = plannedTier ?? tier
+
+  /**
    * Сколько снимков разрешено — зависит от ВЫБРАННОГО тарифа.
    *
    * ⚠️ Раньше здесь стояло 15 на все тарифы, и лишние снимки отрезались молча
@@ -166,7 +199,7 @@ export function ListingForm({
    * пятнадцать, ничего об этом не узнав. Сайт в это же время обещал и принимал
    * 20 обычному и VIP, 30 — Premium. Теперь число общее, из пакета.
    */
-  const maxImages = photoLimitForTier(tier)
+  const maxImages = photoLimitForTier(effectiveTier)
 
   const pick = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -262,7 +295,7 @@ export function ListingForm({
     // решит, какие снимки убрать.
     if (total > maxImages) {
       return setLocalError(
-        tier === 'premium' ? t.listing.maxImagesPremium : t.listing.maxImagesStandard
+        effectiveTier === 'premium' ? t.listing.maxImagesPremium : t.listing.maxImagesStandard
       )
     }
 
