@@ -11,10 +11,16 @@ import {
   TextInput,
   View
 } from 'react-native'
-import {Link, Stack, router} from 'expo-router'
+import {Link, Stack, router, useLocalSearchParams} from 'expo-router'
 import {Image} from 'expo-image'
 
-import type {Booking, CommentReport, Property, Translations} from '@birklik/core/types'
+import type {
+  Booking,
+  CommentReport,
+  MonthlyRevenue,
+  Property,
+  Translations
+} from '@birklik/core/types'
 
 import {useAuth} from '@/auth/auth-provider'
 import {useLanguage} from '@/i18n/language-provider'
@@ -30,6 +36,7 @@ import {
   getAllUsers,
   getPendingProperties,
   getReports,
+  getRevenueMonths,
   setPropertyActive,
   setUserBlocked,
   type CommentWithProperty,
@@ -37,11 +44,20 @@ import {
 } from '@/services/moderation-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
-type Tab = 'pending' | 'listings' | 'bookings' | 'comments' | 'reports' | 'people'
+import {RevenueView} from './revenue-view'
+
+type Tab = 'pending' | 'listings' | 'bookings' | 'comments' | 'reports' | 'people' | 'revenue'
 
 type StatusFilter = 'all' | 'active' | 'pending' | 'inactive' | 'draft'
 
 const STATUS_FILTERS: StatusFilter[] = ['all', 'active', 'pending', 'inactive', 'draft']
+
+/** Разделы, на которые можно привести ссылкой: `/moderation?tab=bookings`. */
+const TABS: Tab[] = ['pending', 'listings', 'bookings', 'comments', 'reports', 'people', 'revenue']
+
+function tabFromParam(value: unknown): Tab | undefined {
+  return typeof value === 'string' && (TABS as string[]).includes(value) ? (value as Tab) : undefined
+}
 
 /** Подписи состояний — те же, что на сайте, из общего пакета. */
 function statusLabel(t: Translations, value: StatusFilter): string {
@@ -73,13 +89,27 @@ export default function ModerationScreen() {
   const {t} = useLanguage()
   const {isModerator, loading: authLoading} = useAuth()
 
-  const [tab, setTab] = useState<Tab>('pending')
+  // Раздел можно задать ссылкой — этим пользуется уведомление модератора о
+  // новой брони: без параметра оно привело бы его на «Ожидают проверки», и
+  // саму бронь пришлось бы искать руками.
+  const params = useLocalSearchParams<{tab?: string}>()
+  const [tab, setTab] = useState<Tab>(tabFromParam(params.tab) ?? 'pending')
   const [pending, setPending] = useState<Property[]>([])
   const [allListings, setAllListings] = useState<Property[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [comments, setComments] = useState<CommentWithProperty[]>([])
   const [reports, setReports] = useState<CommentReport[]>([])
   const [users, setUsers] = useState<ModeratedUser[]>([])
+  const [revenue, setRevenue] = useState<MonthlyRevenue[]>([])
+  /**
+   * Разделы, выборка которых ОТКАЗАЛА.
+   *
+   * ⚠️ Заведено 2026-11-12. До этого отказ любой из выборок глотался
+   * `Promise.allSettled` без следа, и раздел выглядел просто пустым: «нет
+   * права читать» и «ничего нет» рисовались одинаково. Владелец на этом
+   * споткнулся на «Людях» и решил, что раздел сломан.
+   */
+  const [failed, setFailed] = useState<Set<Tab>>(new Set())
   // Человек, открытый в окне. Отдельно от `blockTarget`: сначала смотрим
   // данные, и только потом подтверждаем блокировку — два разных вопроса.
   const [openUser, setOpenUser] = useState<ModeratedUser | null>(null)
@@ -100,13 +130,14 @@ export default function ModerationScreen() {
 
   const load = useCallback(async () => {
     // allSettled: отказ одной выборки не должен оставлять экран пустым целиком.
-    const [p, l, b, c, r, u] = await Promise.allSettled([
+    const [p, l, b, c, r, u, v] = await Promise.allSettled([
       getPendingProperties(),
       getAllProperties(),
       getAllBookings(),
       getAllComments(),
       getReports(),
-      getAllUsers()
+      getAllUsers(),
+      getRevenueMonths()
     ])
     if (p.status === 'fulfilled') setPending(p.value)
     if (l.status === 'fulfilled') setAllListings(l.value)
@@ -114,6 +145,26 @@ export default function ModerationScreen() {
     if (c.status === 'fulfilled') setComments(c.value)
     if (r.status === 'fulfilled') setReports(r.value)
     if (u.status === 'fulfilled') setUsers(u.value)
+    if (v.status === 'fulfilled') setRevenue(v.value)
+
+    // ⚠️ Отказы ЗАПОМИНАЕМ и показываем. Проглоченный отказ рисуется как
+    // пустой раздел, и отличить «читать не дали» от «ничего нет» нельзя
+    // ничем — ни на экране, ни в журнале, потому что причина выброшена.
+    const broken = new Set<Tab>()
+    const mark = (tab: Tab, result: PromiseSettledResult<unknown>) => {
+      if (result.status === 'rejected') {
+        broken.add(tab)
+        console.warn(`[Модераторка] раздел «${tab}» не загрузился:`, result.reason)
+      }
+    }
+    mark('pending', p)
+    mark('listings', l)
+    mark('bookings', b)
+    mark('comments', c)
+    mark('reports', r)
+    mark('people', u)
+    mark('revenue', v)
+    setFailed(broken)
   }, [])
 
   useEffect(() => {
@@ -187,6 +238,15 @@ export default function ModerationScreen() {
     )
   }, [users, userQuery])
 
+  /**
+   * Что написать вместо пустого раздела.
+   *
+   * Отказ выборки обязан выглядеть иначе, чем «ничего нет»: первое чинят, со
+   * вторым живут. Раньше оба случая рисовались одной подписью `noResults`.
+   */
+  const emptyText = (section: Tab, nothing: string): string =>
+    failed.has(section) ? t.moderation.loadFailed : nothing
+
   /** Подтверждённая блокировка или разблокировка. */
   const applyBlock = async () => {
     if (!blockTarget) return
@@ -235,7 +295,10 @@ export default function ModerationScreen() {
     {key: 'reports', label: t.moderation.viewReports, count: reports.filter(r => r.status !== 'closed').length},
     // В счётчике — заблокированные, а не все: число «140» рядом с подписью
     // ничего модератору не говорит, а «2» говорит сразу.
-    {key: 'people', label: t.moderation.peopleTab, count: users.filter(u => u.blocked).length}
+    {key: 'people', label: t.moderation.peopleTab, count: users.filter(u => u.blocked).length},
+    // У выручки счётчика НЕТ намеренно: число рядом с подписью читалось бы как
+    // сумма, а это было бы количество месяцев.
+    {key: 'revenue', label: t.moderation.revenueTab, count: 0}
   ]
 
   return (
@@ -268,7 +331,7 @@ export default function ModerationScreen() {
             // Не `dashboard.noListings`: та подпись — «вы ещё не добавили
             // объявления», про свои. Модератор смотрит чужие, и пустота здесь
             // значит «проверять нечего».
-            <Text style={styles.empty}>{t.messages.noResults}</Text>
+            <Text style={styles.empty}>{emptyText('pending', t.messages.noResults)}</Text>
           ) : (
             pending.map(property => (
               <View key={property.id} style={styles.card}>
@@ -356,7 +419,7 @@ export default function ModerationScreen() {
 
         {tab === 'listings' &&
           (foundListings.length === 0 ? (
-            <Text style={styles.empty}>{t.messages.noResults}</Text>
+            <Text style={styles.empty}>{emptyText('listings', t.messages.noResults)}</Text>
           ) : (
             foundListings.map(property => {
               const active = property.status === 'active'
@@ -438,7 +501,7 @@ export default function ModerationScreen() {
 
         {tab === 'bookings' &&
           (bookings.length === 0 ? (
-            <Text style={styles.empty}>{t.dashboard.bookingNoBookings}</Text>
+            <Text style={styles.empty}>{emptyText('bookings', t.dashboard.bookingNoBookings)}</Text>
           ) : (
             bookings.map(booking => (
               <View key={booking.id} style={styles.card}>
@@ -475,7 +538,7 @@ export default function ModerationScreen() {
 
         {tab === 'comments' &&
           (comments.length === 0 ? (
-            <Text style={styles.empty}>{t.property.noComments}</Text>
+            <Text style={styles.empty}>{emptyText('comments', t.property.noComments)}</Text>
           ) : (
             comments.map(comment => (
               <View key={`${comment.propertyId}-${comment.id}`} style={styles.card}>
@@ -500,7 +563,7 @@ export default function ModerationScreen() {
 
         {tab === 'reports' &&
           (reports.length === 0 ? (
-            <Text style={styles.empty}>{t.messages.noResults}</Text>
+            <Text style={styles.empty}>{emptyText('reports', t.messages.noResults)}</Text>
           ) : (
             reports.map(report => (
               <View key={report.id} style={styles.card}>
@@ -523,11 +586,19 @@ export default function ModerationScreen() {
             ))
           ))}
 
+        {tab === 'revenue' && (
+          <RevenueView months={revenue} failed={failed.has('revenue')} t={t} />
+        )}
+
         {tab === 'people' && (
           <>
+            {/* ⚠️ Своя подпись, а не `t.search.placeholder`. Та — от поиска
+                ЖИЛЬЯ: «Введите местность, район или адрес». Над списком людей
+                она читалась как поломка раздела, и владелец так её и прочитал
+                2026-11-12. */}
             <TextInput
               style={styles.search}
-              placeholder={t.search.placeholder}
+              placeholder={t.moderation.searchPeople}
               placeholderTextColor={colors.gray400}
               value={userQuery}
               onChangeText={setUserQuery}
@@ -536,8 +607,17 @@ export default function ModerationScreen() {
             />
 
             {foundUsers.length === 0 ? (
+              // Пустота здесь — норма, а не сбой: без запроса показываются
+              // только заблокированные, и обычно их ноль. Прежняя подпись
+              // «Заблокирован: 0» об этом не говорила ничего, и раздел
+              // выглядел неработающим. Отказ выборки — третий, отдельный
+              // случай: его нельзя выдавать за «никого нет».
               <Text style={styles.empty}>
-                {userQuery.trim() ? t.messages.noResults : t.moderation.blockedBadge + ': 0'}
+                {failed.has('people')
+                  ? t.moderation.loadFailed
+                  : userQuery.trim()
+                    ? t.messages.noResults
+                    : `${t.moderation.peopleNoneBlocked}. ${t.moderation.peopleHint}`}
               </Text>
             ) : (
               foundUsers.map(person => (

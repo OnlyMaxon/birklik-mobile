@@ -16,7 +16,14 @@ import {toImageApiUrl} from '@birklik/core/utils/images'
  */
 const SITE_ORIGIN = 'https://birklik.az'
 
-function imageUrl(source: string | undefined): string | undefined {
+/**
+ * Полный адрес одной картинки: аватара, снимка, чего угодно из базы.
+ *
+ * Открыт наружу с 2026-11-12 — до этого был внутренним, и всё, что не
+ * объявление, приходилось показывать как есть. Так в модераторке остались без
+ * аватаров люди, чей снимок записан относительным путём.
+ */
+export function toFullImageUrl(source: string | undefined): string | undefined {
   return toImageApiUrl(source, SITE_ORIGIN)
 }
 
@@ -29,5 +36,5 @@ function imageUrl(source: string | undefined): string | undefined {
  */
 export function withImageUrls<T extends {images?: string[]}>(property: T): T {
   if (!property.images?.length) return property
-  return {...property, images: property.images.map(url => imageUrl(url) || url)}
+  return {...property, images: property.images.map(url => toFullImageUrl(url) || url)}
 }

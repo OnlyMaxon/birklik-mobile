@@ -10,10 +10,17 @@ import {
 } from '@react-native-firebase/firestore'
 import {deleteObject, ref} from '@react-native-firebase/storage'
 
-import type {Booking, Comment, CommentReport, Property} from '@birklik/core/types'
+import type {
+  Booking,
+  Comment,
+  CommentReport,
+  MonthlyRevenue,
+  Property
+} from '@birklik/core/types'
 import {storagePathFromImageSource} from '@birklik/core/utils/images'
 
 import {auth, db, storage} from '@/lib/firebase'
+import {toFullImageUrl, withImageUrls} from '@/lib/images'
 
 /**
  * Модераторка.
@@ -28,13 +35,17 @@ import {auth, db, storage} from '@/lib/firebase'
  * серверная рассылка жалоб.
  */
 
-/** Объявления, ожидающие проверки. */
+/**
+ * Объявления, ожидающие проверки.
+ *
+ * ⚠️ `withImageUrls` обязателен — см. разбор в `getAllProperties` ниже.
+ */
 export async function getPendingProperties(): Promise<Property[]> {
   const snapshot = await getDocs(
     query(collection(db, 'properties'), where('status', '==', 'pending'))
   )
   return snapshot.docs
-    .map(d => ({id: d.id, ...d.data()}) as Property)
+    .map(d => withImageUrls({id: d.id, ...d.data()} as Property))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
 }
 
@@ -48,11 +59,22 @@ export async function getPendingProperties(): Promise<Property[]> {
  *
  * Сортировка в памяти: `orderBy('createdAt')` молча выбрасывает записи без
  * этого поля, а в боевой базе такие есть.
+ *
+ * ⚠️ **`withImageUrls` здесь обязателен, и его тут не было до 2026-11-12.**
+ * В базе часть снимков записана ОТНОСИТЕЛЬНЫМ путём `/api/images/...` — сайту
+ * этого хватает, он живёт на одном домене с прокси, а приложению достраивать
+ * его нечем. Без обёртки такие карточки показывали белую пустоту, а соседние —
+ * те, что записаны полной ссылкой Storage, — грузились как ни в чём не бывало.
+ * Снаружи это выглядело как плохая связь: половина фотографий есть, половины
+ * нет, перезаход не помогает. Ровно об этом и предупреждает комментарий в
+ * `src/lib/images.ts`: «забытый экран молча покажет пустые прямоугольники».
+ * Модераторка и была забытым экраном — витрина ходит через `property-service`,
+ * где обёртка стоит, а модераторка читает Firestore своей выборкой.
  */
 export async function getAllProperties(): Promise<Property[]> {
   const snapshot = await getDocs(collection(db, 'properties'))
   return snapshot.docs
-    .map(d => ({id: d.id, ...d.data()}) as Property)
+    .map(d => withImageUrls({id: d.id, ...d.data()} as Property))
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
 }
 
@@ -291,8 +313,33 @@ export interface ModeratedUser {
 export async function getAllUsers(): Promise<ModeratedUser[]> {
   const snapshot = await getDocs(collection(db, 'users'))
   return snapshot.docs
-    .map(document => ({id: document.id, ...document.data()}) as ModeratedUser)
+    .map(document => {
+      const person = {id: document.id, ...document.data()} as ModeratedUser
+      // ⚠️ Аватар — та же беда, что у снимков объявлений: записанный
+      // относительным путём, он в приложении не показывается вовсе. Сайт
+      // пропускает его через `toImageApiUrl` в своём `getAllUsers`, здесь
+      // этого не делал никто.
+      return {...person, avatar: toFullImageUrl(person.avatar)}
+    })
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+}
+
+/**
+ * Выручка площадки по месяцам — для вкладки модераторки.
+ *
+ * Документы собирает триггер `recordRevenue` в функциях, по журналу платежей.
+ * Отсюда коллекция ТОЛЬКО читается: правила Firestore запрещают запись в неё
+ * всем, включая модератора, — месячный итог, который можно выставить рукой,
+ * ничего не доказывает.
+ *
+ * Порядок в памяти: месяцев за всю жизнь площадки десятки, а имя документа
+ * (`2026-11`) само сортируется как дата.
+ */
+export async function getRevenueMonths(): Promise<MonthlyRevenue[]> {
+  const snapshot = await getDocs(collection(db, 'revenue'))
+  return snapshot.docs
+    .map(document => ({month: document.id, ...document.data()}) as MonthlyRevenue)
+    .sort((a, b) => b.month.localeCompare(a.month))
 }
 
 const BLOCK_CALLABLE = 'https://europe-west1-birklik-65289.cloudfunctions.net/setUserBlocked'

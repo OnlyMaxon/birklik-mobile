@@ -121,7 +121,10 @@ export default function NotificationsScreen() {
     }
 
     if (BOOKING_KINDS.includes(item.type)) {
-      router.push('/account/bookings')
+      // ⚠️ Копия для модератора ведёт в МОДЕРАТОРКУ, а не в «Мои брони»: чужой
+      // брони у него там нет, и он попал бы на пустой экран. Признак ставит
+      // рассылка `onBookingCreated` в функциях.
+      router.push(item.forModerator ? '/moderation?tab=bookings' : '/account/bookings')
       return
     }
 
