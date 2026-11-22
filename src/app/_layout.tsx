@@ -14,6 +14,7 @@ import {PushRegistrar} from '@/components/push-registrar'
 import {SplashGate} from '@/components/splash-gate'
 import {LanguageProvider} from '@/i18n/language-provider'
 import {initAppCheck} from '@/lib/firebase'
+import {flushPendingReports} from '@/services/diagnostics-service'
 import {colors, fontSize, spacing} from '@/theme/theme'
 
 // Заставкой распоряжаемся сами, а не полагаемся на автоскрытие.
@@ -45,6 +46,17 @@ export default function RootLayout() {
     initAppCheck()
       .then(() => setReady(true))
       .catch(() => setFailed(true))
+  }, [])
+
+  // Донесения, не доехавшие в прошлый раз. Дослать их можно только отсюда:
+  // отказ подачи чаще всего и означает, что связи не было, — то есть само
+  // донесение об отказе тогда тоже не уехало. Без этой дослылки мы знали бы
+  // ровно о тех отказах, при которых связь была, и ни об одном из остальных.
+  //
+  // ⚠️ Не ждём и не ветвим на этом экран: это наша диагностика, а не работа
+  // человека. Отказ гасится внутри самой службы.
+  useEffect(() => {
+    void flushPendingReports()
   }, [])
 
   // Логотип уходит в обоих случаях: и когда всё хорошо, и когда App Check не

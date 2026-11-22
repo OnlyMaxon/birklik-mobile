@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {Pressable, StyleSheet, Text, View} from 'react-native'
+import {AppState, Pressable, StyleSheet, Text, View} from 'react-native'
 import {Stack, router} from 'expo-router'
 import {Ionicons} from '@expo/vector-icons'
 
@@ -13,6 +13,13 @@ import {usePurchaseFlow} from '@/components/use-purchase-flow'
 import {useWatermark} from '@/components/use-watermark'
 import {useLanguage} from '@/i18n/language-provider'
 import {STORE_NAME, planOf} from '@/services/billing-service'
+import {
+  describeFailure,
+  newReportCode,
+  reportSubmit,
+  type FailureCause,
+  type SubmitStep
+} from '@/services/diagnostics-service'
 import {createListing, geocode, uploadImages} from '@/services/listing-service'
 import {colors, fontSize, radius, shadow, spacing} from '@/theme/theme'
 
@@ -98,9 +105,63 @@ export default function AddListingScreen() {
   // работала одним нажатием, а не возвращала человека к кнопке подачи.
   const lastValues = useRef<ListingFormValues | null>(null)
 
+  /**
+   * Ход идущей подачи — то, что уедет в донесении.
+   *
+   * ⚠️ Существует потому, что в разборе 21 ноября не было НИЧЕГО: ни шага, ни
+   * числа снимков, ни кода ошибки. Восстанавливать пришлось по именам файлов,
+   * оставшихся в хранилище, и заняло это двое суток. Здесь всё то же самое
+   * собирается на ходу и стоит один объект в памяти.
+   */
+  const attempt = useRef<{
+    code: string
+    startedAt: number
+    step: SubmitStep
+    photosTotal: number
+    photosDone: number
+    backgrounded: boolean
+  } | null>(null)
+
+  // ⚠️ Отмечаем, что человек уходил из приложения. Это не любопытство: именно
+  // уход ломал подачу — свёрнутое приложение не рисует вид, которым наносится
+  // водяной знак, и страховка объявляла снимок неудавшимся. Починка в
+  // `use-watermark` ждёт возврата, а это поле — способ убедиться, что она
+  // работает: отныне уходов в донесениях будет много, а отказов по ним ни одного.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active' && attempt.current) attempt.current.backgrounded = true
+    })
+    return () => subscription.remove()
+  }, [])
+
   const toListings = () => {
     setOutcome(null)
     router.replace('/account/listings')
+  }
+
+  /**
+   * Что сказать человеку о причине отказа.
+   *
+   * ⚠️ Неизвестная причина получает ОБЩИЙ текст, а не «проверьте интернет».
+   * Прежде связь обвинялась всегда — и в разборе 21 ноября это сбило с толку
+   * первым делом: искали плохую связь, которой не было, а человек просто выходил
+   * из приложения.
+   */
+  const causeBody = (cause: FailureCause): string => {
+    switch (cause) {
+      case 'leftApp':
+        return t.dialog.errorLeftApp
+      case 'signedOut':
+        return t.dialog.errorSignedOut
+      case 'photo':
+        return t.dialog.errorPhoto
+      case 'network':
+        return t.dialog.errorNetwork
+      case 'rights':
+        return t.dialog.errorRights
+      default:
+        return t.dialog.errorBody
+    }
   }
 
   /** Объявление создано и ушло к модератору — главный успешный исход экрана. */
@@ -181,6 +242,16 @@ export default function AddListingScreen() {
 
   const submit = async (values: ListingFormValues) => {
     lastValues.current = values
+    // Код придумывается ЗДЕСЬ, до первого обращения к сети: человек должен
+    // увидеть его и при полном обрыве связи, когда донесение до нас не доедет.
+    attempt.current = {
+      code: newReportCode(),
+      startedAt: Date.now(),
+      step: 'location',
+      photosTotal: values.newImages.length,
+      photosDone: 0,
+      backgrounded: false
+    }
     setSaving(true)
     setError('')
     setOutcome(null)
@@ -194,7 +265,13 @@ export default function AddListingScreen() {
         values.coordinates ??
         (await geocode([values.address, values.city].filter(Boolean).join(', ')))
 
+      if (attempt.current) attempt.current.step = 'photos'
+
       const urls = await uploadImages(values.newImages, apply, (done, total) => {
+        if (attempt.current) {
+          attempt.current.photosDone = done
+          attempt.current.photosTotal = total
+        }
         if (total === 0) {
           setProgress({value: STEP.photosTo, label: t.dialog.stepSaving})
           return
@@ -208,6 +285,7 @@ export default function AddListingScreen() {
       })
 
       setProgress({value: STEP.saving, label: t.dialog.stepSaving})
+      if (attempt.current) attempt.current.step = 'saving'
 
       const chosen = plan ? planOf(plan) : null
 
@@ -240,6 +318,24 @@ export default function AddListingScreen() {
         tier: chosen?.tier ?? 'standard'
       })
 
+      // Успех доносится ТОЖЕ, и это решение владельца от 2026-11-22. Без успехов
+      // неизвестен знаменатель: «три отказа» значит одно, когда подач было три,
+      // и совсем другое, когда их было сто. Момент выбран здесь, а не после
+      // оплаты, намеренно — объявление с этой секунды существует, а оплата это
+      // уже отдельная история со своим журналом.
+      const run = attempt.current
+      void reportSubmit({
+        outcome: 'success',
+        code: run?.code ?? newReportCode(),
+        step: run?.step,
+        photosTotal: run?.photosTotal,
+        photosDone: run?.photosDone,
+        backgrounded: run?.backgrounded,
+        durationMs: run ? Date.now() - run.startedAt : undefined,
+        tier: chosen?.tier ?? 'standard',
+        propertyId
+      })
+
       if (plan && chosen) {
         // Объявление уже создано черновиком — теперь оплата. Дальше всё ведёт
         // `usePurchaseFlow`: окно Google, проверка чека на сервере, тариф.
@@ -250,12 +346,36 @@ export default function AddListingScreen() {
         // удаляется при отказе от оплаты.
         paidHere.current = true
         setProgress({value: STEP.payment, label: t.dialog.stepPayment})
+        if (attempt.current) attempt.current.step = 'payment'
         purchase.start(plan, propertyId)
         return
       }
 
       showModerationDone()
-    } catch {
+    } catch (failure) {
+      // ⚠️ `catch (failure)`, а НЕ `catch {`. До 2026-11-22 здесь стояло второе:
+      // приложение получало готовый ответ, чем именно отказало, и выбрасывало
+      // его не посмотрев. Из-за этого единственный разбор занял двое суток и
+      // вёлся по именам файлов в хранилище. Переменную отсюда не убирать.
+      const run = attempt.current
+      const code = run?.code ?? newReportCode()
+      const {cause, errorName, errorCode, errorMessage} = describeFailure(failure)
+
+      void reportSubmit({
+        outcome: 'error',
+        code,
+        cause,
+        step: run?.step,
+        photosTotal: run?.photosTotal,
+        photosDone: run?.photosDone,
+        backgrounded: run?.backgrounded,
+        durationMs: run ? Date.now() - run.startedAt : undefined,
+        tier: plan ?? 'standard',
+        errorName,
+        errorCode,
+        errorMessage
+      })
+
       setError(t.listing.createdFailed)
       // ⚠️ Объявление к этому моменту НЕ создано: `createListing` — последнее
       // ожидание в кладке, и до него дело не дошло. Значит повтор безопасен и
@@ -263,8 +383,12 @@ export default function AddListingScreen() {
       setOutcome({
         variant: 'error',
         title: t.dialog.errorTitle,
-        body: t.dialog.errorBody,
-        note: t.dialog.errorNote,
+        // Причина, а не вечное «проверьте интернет». Прежний текст винил связь
+        // всегда — в том числе когда человек просто выходил из приложения, и
+        // именно это сбивало с толку в разборе: владелец искал связь, которой
+        // ничего не было.
+        body: causeBody(cause),
+        note: `${t.dialog.errorNote}\n\n${t.dialog.errorCode.replace('{code}', code)}`,
         support: true,
         primary: {
           label: t.dialog.retry,

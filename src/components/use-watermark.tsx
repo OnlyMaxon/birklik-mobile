@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {View} from 'react-native'
+import {AppState, type AppStateStatus, View} from 'react-native'
 import {captureRef} from 'react-native-view-shot'
 
 import {WatermarkedImage} from '@/components/watermarked-image'
@@ -7,13 +7,28 @@ import type {PickedImage} from '@/services/listing-service'
 
 interface Pending extends PickedImage {
   resolve: (uri: string) => void
-  reject: () => void
+  reject: (error: Error) => void
 }
 
 /** Столько ждём отрисовку, прежде чем признать снимок неудавшимся. */
 const RENDER_TIMEOUT = 8000
 /** Кадр после загрузки — чтобы вид успел выложиться. */
 const FRAME_DELAY = 32
+/**
+ * Кадр ПОСЛЕ ВОЗВРАТА в приложение. Больше обычного намеренно: вид только что
+ * был не на экране, и системе нужен не один проход отрисовки, чтобы выложить его
+ * заново. Снимешь через 32 мс — поймаешь полупустой кадр, то есть вернёшь ровно
+ * те чёрные фотографии, от которых ушли ожиданием загрузки ниже.
+ */
+const RESUME_DELAY = 400
+
+/**
+ * ⚠️ `unknown` считается передним планом. На холодном запуске Android успевает
+ * отдать именно его, и ждать «настоящего active» значило бы не снять ни одного
+ * кадра до первого переключения приложения.
+ */
+const isForeground = (state: AppStateStatus | null): boolean =>
+  state === 'active' || state === 'unknown' || state === null
 
 /**
  * Наложение водяного знака на снимок.
@@ -42,6 +57,42 @@ export function useWatermark() {
   const [pending, setPending] = useState<Pending | null>(null)
   const [ready, setReady] = useState(false)
 
+  /**
+   * ⚠️ На переднем ли плане приложение. Это НЕ украшение, а причина поломки,
+   * из-за которой из приложения полгода не создавалось ни одного объявления.
+   *
+   * Свёрнутое приложение вид не рисует: картинка в нём не догружается, кадр не
+   * снимается. Страховка ниже объявляла снимок неудавшимся через восемь секунд,
+   * отказ рушил всю подачу, и человек получал «Объявление не сохранилось.
+   * Чаще всего дело в связи» — про связь, которая была ни при чём. А уходят в
+   * другое приложение почти всегда: двадцать снимков со знаком идут десятки
+   * секунд, и всё это время смотреть на полосу незачем.
+   *
+   * Поэтому ожидание кадра и страховка идут ТОЛЬКО на переднем плане. Вышел
+   * человек — работа встаёт; вернулся — снимается кадр и подача продолжается с
+   * того же места. Отказ превратился в паузу.
+   *
+   * ⚠️ Таймеры этим не заменяются: пока приложение свёрнуто, Android замораживает
+   * и их тоже — но не всегда и не сразу. Именно поэтому поломка выглядела
+   * случайной: в одной попытке страховка не успевала сработать (и в журнале
+   * видно, как загрузка просто встала на две с половиной минуты), а в следующей
+   * успевала. Полагаться на заморозку нельзя, надо спрашивать состояние.
+   */
+  const [active, setActive] = useState(() => isForeground(AppState.currentState))
+  /** Вернулись из-за спины — первому кадру нужна отсрочка подольше. */
+  const resumed = useRef(false)
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      setActive(current => {
+        const next = isForeground(state)
+        if (next && !current) resumed.current = true
+        return next
+      })
+    })
+    return () => subscription.remove()
+  }, [])
+
   // ⚠️ Снятие ждёт ЗАГРУЗКИ картинок, а не отсчёта времени. Раньше здесь стоял
   // таймер на 120 мс — и ловил кадр, где картинка ещё проявлялась поверх
   // чёрного фона рамки. В объявления уходили чёрные фотографии, и каждая
@@ -49,39 +100,59 @@ export function useWatermark() {
   // двадцатой миллисекунде успевает всё меньше. Найдено на устройстве
   // 2026-09-26, по пяти загруженным снимкам подряд.
   useEffect(() => {
-    if (!pending || !ready) return
+    // `active` в условии — то самое лечение: на свёрнутом приложении кадр не
+    // снимаем вовсе, а не снимаем неудачно.
+    if (!pending || !ready || !active) return
 
     let cancelled = false
     const timer = setTimeout(async () => {
       try {
         const uri = await captureRef(viewRef, {format: 'png', quality: 1})
-        if (!cancelled) pending.resolve(uri)
-      } catch {
-        if (!cancelled) pending.reject()
+        if (!cancelled) {
+          resumed.current = false
+          pending.resolve(uri)
+        }
+      } catch (error) {
+        // Причина уезжает наверх, а не теряется: по ней экран подачи называет
+        // человеку, что случилось, вместо вечного «проверьте интернет».
+        // ⚠️ Причина прикладывается ПРИСВОЕНИЕМ, а не вторым доводом `Error`.
+        // Поддержку `new Error(msg, {cause})` у Hermes проверять незачем, если
+        // можно не зависеть от неё вовсе: потерять причину здесь значит снова
+        // остаться с ошибкой без объяснения.
+        if (!cancelled) {
+          const failure = new Error('watermark-capture-failed')
+          ;(failure as Error & {cause?: unknown}).cause = error
+          pending.reject(failure)
+        }
       } finally {
         if (!cancelled) {
           setPending(null)
           setReady(false)
         }
       }
-    }, FRAME_DELAY)
+    }, resumed.current ? RESUME_DELAY : FRAME_DELAY)
 
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [pending, ready])
+  }, [pending, ready, active])
 
   // Страховка от зависания. Честная ошибка лучше чёрного прямоугольника в
   // объявлении: её человек увидит и повторит, а чёрный снимок уйдёт в базу
   // молча — так эта поломка и прожила незамеченной.
+  //
+  // ⚠️ Тикает ТОЛЬКО на переднем плане. Свёрнутое приложение вид не рисует, и
+  // восемь секунд истекали не потому, что телефон не справился, а потому, что
+  // рисовать было некому. Отсчёт начинается заново при каждом возврате — это
+  // правильно: страховка сторожит отрисовку, а не терпение человека.
   useEffect(() => {
-    if (!pending) return
+    if (!pending || !active) return
 
     let cancelled = false
     const guard = setTimeout(() => {
       if (cancelled) return
-      pending.reject()
+      pending.reject(new Error('watermark-render-timeout'))
       setPending(null)
       setReady(false)
     }, RENDER_TIMEOUT)
@@ -90,7 +161,7 @@ export function useWatermark() {
       cancelled = true
       clearTimeout(guard)
     }
-  }, [pending])
+  }, [pending, active])
 
   const apply = useCallback(
     (image: PickedImage) =>
