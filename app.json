@@ -13,7 +13,8 @@
       "icon": "./assets/images/icon-ios.png",
       "buildNumber": "6",
       "entitlements": {
-        "aps-environment": "production"
+        "aps-environment": "production",
+        "com.apple.developer.usernotifications.time-sensitive": true
       },
       "associatedDomains": [
         "applinks:birklik.az"
