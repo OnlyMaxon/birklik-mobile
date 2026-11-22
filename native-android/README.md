@@ -48,7 +48,21 @@ id          booking          moderation
 человек видит в системных настройках телефона, а те читают язык ТЕЛЕФОНА, не выбранный в
 приложении, — поэтому они только по-азербайджански.
 
-## 3. Номер версии
+## 3. Манифест: вертикальная ориентация не требование к железу
+
+`android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<uses-feature android:name="android.hardware.screen.portrait" android:required="false"/>
+```
+
+У `MainActivity` стоит `android:screenOrientation="portrait"`, и Android из этого САМ выводит
+обязательную аппаратную возможность `android.hardware.screen.portrait`. Консоль Play тогда
+пишет «приложение доступно не на всех устройствах»: установить его не могут те, кто портрет не
+умеет — часть планшетов, Desktop/ChromeOS и Android XR. Строка снимает требование, не меняя
+ориентацию. Замечено владельцем 2026-11-22; в выложенной 1.0.16 (code 20) её ещё НЕТ.
+
+## 4. Номер версии
 
 `android/app/build.gradle`, `versionCode` и `versionName`. ⚠️ Правятся **руками и в двух
 местах**: здесь ради сборки и в `app.json` ради донесений об ошибках — они берут версию оттуда,
