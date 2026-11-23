@@ -1,8 +1,9 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {AppState, type AppStateStatus, View} from 'react-native'
+import {AppState, View} from 'react-native'
 import {captureRef} from 'react-native-view-shot'
 
 import {WatermarkedImage} from '@/components/watermarked-image'
+import {isForeground} from '@/lib/foreground'
 import type {PickedImage} from '@/services/listing-service'
 
 interface Pending extends PickedImage {
@@ -21,14 +22,6 @@ const FRAME_DELAY = 32
  * те чёрные фотографии, от которых ушли ожиданием загрузки ниже.
  */
 const RESUME_DELAY = 400
-
-/**
- * ⚠️ `unknown` считается передним планом. На холодном запуске Android успевает
- * отдать именно его, и ждать «настоящего active» значило бы не снять ни одного
- * кадра до первого переключения приложения.
- */
-const isForeground = (state: AppStateStatus | null): boolean =>
-  state === 'active' || state === 'unknown' || state === null
 
 /**
  * Наложение водяного знака на снимок.

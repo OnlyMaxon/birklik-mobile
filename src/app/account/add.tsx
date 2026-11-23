@@ -120,6 +120,10 @@ export default function AddListingScreen() {
     photosTotal: number
     photosDone: number
     backgrounded: boolean
+    /** Сколько раз отправка снимка срывалась и начиналась заново. */
+    retries: number
+    /** Чем сорвалась последняя — даже если в итоге снимок доехал. */
+    retryCode: string | null
   } | null>(null)
 
   // ⚠️ Отмечаем, что человек уходил из приложения. Это не любопытство: именно
@@ -250,7 +254,9 @@ export default function AddListingScreen() {
       step: 'location',
       photosTotal: values.newImages.length,
       photosDone: 0,
-      backgrounded: false
+      backgrounded: false,
+      retries: 0,
+      retryCode: null
     }
     setSaving(true)
     setError('')
@@ -282,6 +288,13 @@ export default function AddListingScreen() {
             .replace('{done}', String(done))
             .replace('{total}', String(total))
         })
+      }, (index, attemptNo, code) => {
+        // Полосу не трогаем: снимок ещё не готов, и дёргать её назад значило бы
+        // врать о доле. Повтор занимает секунды и человеку не виден — а вот в
+        // донесении он виден, и только по нему мы узнаем, помогла ли починка.
+        if (!attempt.current) return
+        attempt.current.retries += 1
+        attempt.current.retryCode = `${code}@${index}/${attemptNo}`
       })
 
       setProgress({value: STEP.saving, label: t.dialog.stepSaving})
@@ -331,6 +344,8 @@ export default function AddListingScreen() {
         photosTotal: run?.photosTotal,
         photosDone: run?.photosDone,
         backgrounded: run?.backgrounded,
+        retries: run?.retries,
+        retryCode: run?.retryCode ?? undefined,
         durationMs: run ? Date.now() - run.startedAt : undefined,
         tier: chosen?.tier ?? 'standard',
         propertyId
@@ -369,6 +384,8 @@ export default function AddListingScreen() {
         photosTotal: run?.photosTotal,
         photosDone: run?.photosDone,
         backgrounded: run?.backgrounded,
+        retries: run?.retries,
+        retryCode: run?.retryCode ?? undefined,
         durationMs: run ? Date.now() - run.startedAt : undefined,
         tier: plan ?? 'standard',
         errorName,

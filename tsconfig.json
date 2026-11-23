@@ -18,6 +18,7 @@
   "exclude": [
     "node_modules",
     "core/node_modules",
-    "core/**/*.test.ts"
+    "core/**/*.test.ts",
+    "tests/**"
   ]
 }

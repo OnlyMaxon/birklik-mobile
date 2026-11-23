@@ -6,6 +6,7 @@ import * as ImageManipulator from 'expo-image-manipulator'
 import type {Amenity, LocationCategory, Property, PropertyType} from '@birklik/core/types'
 import {resolveCityQuery, TIER_PHOTO_LIMITS} from '@birklik/core/data'
 
+import {retryUpload} from '@/lib/upload-retry'
 import {auth, db, storage} from '@/lib/firebase'
 
 /**
@@ -43,6 +44,41 @@ const IMAGE_QUALITY = 0.75
  * Поэтому он равен наибольшему из возможных.
  */
 const MAX_IMAGES = TIER_PHOTO_LIMITS.premium
+
+/**
+ * Загрузка ОДНОГО снимка: сколько попыток и сколько ждать между ними.
+ *
+ * ⚠️ Повтор здесь появился по донесению ELAN-9K66 от 2026-11-23 — первому, что
+ * прислала функция `reportClientError`. Устройство Galaxy S23 FE, Android 16,
+ * сборка 21: водяной знак прошёл (прошлая беда вылечена), девять снимков уехали
+ * ровно по 5,3 секунды каждый, а десятый отказал
+ * `[storage/unknown] The server has terminated the upload session`. Одна осечка
+ * одного снимка роняла ВСЮ подачу: двадцать минут работы — и ничего, кроме
+ * осиротевших файлов в хранилище.
+ *
+ * Отсюда и числа. Четыре попытки с ожиданием 1 / 3 / 7 секунд: сорванная сессия
+ * загрузки лечится повтором с нуля, а не упорством в той же. Повторяется ТОЛЬКО
+ * отправка — знак и сжатие уже сделаны и переделывать их незачем.
+ */
+const UPLOAD_ATTEMPTS = 4
+const UPLOAD_BACKOFF = [1000, 3000, 7000]
+
+/**
+ * Сколько ВИДИМОГО времени даётся одному снимку, прежде чем считать загрузку
+ * зависшей, отменить её и начать заново.
+ *
+ * ⚠️ Это второй отказ из того же вечера, и он опаснее первого: вторая попытка
+ * того же человека не отказала вовсе. Одиннадцать снимков уехали, а двенадцатый
+ * повис — ни ошибки, ни продвижения, ни донесения, потому что `putFile` просто
+ * никогда не ответил. Экран остался с полосой загрузки навсегда. Молчащий отказ
+ * не лечится повтором: повторять нечего, пока обещание не отказало.
+ *
+ * Сорок пять секунд — с большим запасом: в том же разборе снимок уезжал за 5,3
+ * секунды, самый тяжёлый за 7. Считается время ТОЛЬКО с открытым приложением
+ * (`activeDelay`): в фоне загрузка законно висит долго и доезжает — там же
+ * измерено 88 секунд с успешным продолжением. Отменить такую было бы вредом.
+ */
+const UPLOAD_STALL = 45000
 
 /** Баку — запасной вариант, если геокодер не ответил. Тот же, что на сайте. */
 export const DEFAULT_COORDINATES = {lat: 40.4093, lng: 49.8671}
@@ -173,6 +209,41 @@ export interface PickedImage {
 }
 
 /**
+ * Отправка одного готового снимка в хранилище.
+ *
+ * Сама по себе `putFile` — одна попытка без срока: она либо ответит, либо нет.
+ * Правила повтора живут отдельно, в `retryUpload`, и там же проверяются
+ * прогоном — здесь остаётся только то, что знает про Firebase.
+ *
+ * ⚠️ Имя файла между попытками НЕ меняется намеренно. Незавершённая загрузка
+ * объекта в хранилище не создаёт, так что повтор не плодит мусор и не множит
+ * осиротевшие снимки, по которым мы такие отказы и читаем.
+ */
+function uploadOne(
+  reference: ReturnType<typeof ref>,
+  uri: string,
+  onRetry?: (attempt: number, code: string) => void
+): Promise<void> {
+  return retryUpload({
+    attempts: UPLOAD_ATTEMPTS,
+    backoff: UPLOAD_BACKOFF,
+    stall: UPLOAD_STALL,
+    onRetry,
+    start: () => {
+      const task = putFile(reference, uri)
+      return {
+        done: (async () => {
+          await task
+        })(),
+        cancel: () => {
+          task.cancel()
+        }
+      }
+    }
+  })
+}
+
+/**
  * Загружает выбранные фотографии в Storage и возвращает их адреса.
  *
  * ⚠️ Папка — по ЗАГРУЖАЮЩЕМУ, а не по владельцу объявления: этого требуют
@@ -205,7 +276,16 @@ export async function uploadImages(
    * системный кружок не отличим от зависшего приложения. Бегунок «по таймеру»
    * был бы хуже: он обещает срок, которого никто не обещал.
    */
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  /**
+   * Зовётся, когда отправка снимка сорвалась и начинается новая попытка.
+   *
+   * ⚠️ Нужен не экрану, а донесению об ошибке: по числу повторов видно, лечит
+   * ли повтор то, что отказывало 23.11, или беда глубже. Без этого счётчика
+   * успешная подача с тремя повторами и успешная подача с первого раза выглядят
+   * одинаково — и мы снова ничего не узнаем.
+   */
+  onRetry?: (index: number, attempt: number, code: string) => void
 ): Promise<string[]> {
   const userId = auth.currentUser?.uid
   if (!userId) throw new Error('not-authenticated')
@@ -273,8 +353,10 @@ export async function uploadImages(
     const reference = ref(storage, `properties/${userId}/${name}`)
 
     // putFile, а не putString: файл лежит на устройстве, и читать его в память
-    // целиком ради загрузки незачем.
-    await putFile(reference, compressed.uri)
+    // целиком ради загрузки незачем. Повтор и срок на зависание — в `uploadOne`.
+    await uploadOne(reference, compressed.uri, (attempt, code) =>
+      onRetry?.(urls.length, attempt, code)
+    )
 
     // Полный адрес с токеном, а не путь через прокси: база общая с сайтом, а
     // Storage без токена отбивает App Check. На чтении адрес всё равно
