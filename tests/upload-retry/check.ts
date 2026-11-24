@@ -131,7 +131,51 @@ console.log('\n=== 7. В фоне новая попытка не начинае�
   ok('после возврата отправили', state.starts === 1)
 }
 
-console.log('\n=== 8. Подписки на AppState не текут ===')
+console.log('\n=== 8. Отказ БРОСКОМ, а не обещанием, тоже повторяется ===')
+{
+  // putFile может отказать сразу, не возвращая обещания вовсе. Пока `start()`
+  // стоял вне `try`, такой отказ пролетал мимо повтора целиком.
+  let starts = 0
+  const retries: string[] = []
+  await retryUpload({
+    attempts: ATTEMPTS,
+    backoff: BACKOFF,
+    stall: STALL,
+    onRetry: (_a, c) => retries.push(c),
+    start: () => {
+      starts++
+      if (starts < 3) {
+        const e = new Error('bad uri')
+        ;(e as Error & {code?: string}).code = 'storage/invalid-argument'
+        throw e
+      }
+      return {done: Promise.resolve(), cancel: () => {}}
+    }
+  })
+  ok('бросок не обошёл повтор', starts === 3, `попыток ${starts}`)
+  ok('повторы записаны с верным кодом',
+    retries.join() === 'storage/invalid-argument,storage/invalid-argument', retries.join())
+}
+
+console.log('\n=== 9. Бросок ВСЕГДА: отказ наверх, без зацикливания ===')
+{
+  let starts = 0
+  let thrown: unknown = null
+  await retryUpload({
+    attempts: ATTEMPTS, backoff: BACKOFF, stall: STALL,
+    start: () => {
+      starts++
+      const e = new Error('always broken')
+      ;(e as Error & {code?: string}).code = 'storage/invalid-argument'
+      throw e
+    }
+  }).catch(e => { thrown = e })
+  ok('ровно четыре попытки', starts === ATTEMPTS, `попыток ${starts}`)
+  ok('наверх ушёл настоящий код',
+    (thrown as {code?: string})?.code === 'storage/invalid-argument', String((thrown as {code?: string})?.code))
+}
+
+console.log('\n=== 10. Подписки на AppState не текут ===')
 {
   await sleep(50)
   ok('слушателей не осталось', __listenerCount() === 0, `осталось ${__listenerCount()}`)
